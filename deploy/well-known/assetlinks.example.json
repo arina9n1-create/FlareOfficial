@@ -1,0 +1,13 @@
+﻿[
+  {
+    // Android App Links verification for https://vyn9.app (@username, /post/, /video/, /reel/)
+    // REPLACE the fingerprint below with your release keystore's certificate SHA256:
+    //   keytool -list -v -keystore my-upload-key.jks -alias upload | findstr SHA256
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aistudio.vyn9social.live",
+      "sha256_cert_fingerprints": ["AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"]
+    }
+  }
+]

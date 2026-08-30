@@ -1,0 +1,7 @@
+{
+  "name": "Vyn9",
+  "description": "Vyn9 - Modern Social Media App with rich feed, stories, profile customization, chat, reels, and bookmarking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

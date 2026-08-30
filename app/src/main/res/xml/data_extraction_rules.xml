@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+    Data extraction rules for the application.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+   for details.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude auth sessions/tokens and financial data from cloud backup -->
+        <exclude domain="sharedpref" path="vyn9_auth_prefs.xml"/>
+        <exclude domain="sharedpref" path="vyn9_monetization_prefs.xml"/>
+        <exclude domain="sharedpref" path="vyn9_rewards_prefs.xml"/>
+        <exclude domain="sharedpref" path="vyn9_ad_attribution_prefs.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <!-- Same exclusions for device-to-device transfer -->
+        <exclude domain="sharedpref" path="vyn9_auth_prefs.xml"/>
+        <exclude domain="sharedpref" path="vyn9_monetization_prefs.xml"/>
+        <exclude domain="sharedpref" path="vyn9_rewards_prefs.xml"/>
+        <exclude domain="sharedpref" path="vyn9_ad_attribution_prefs.xml"/>
+    </device-transfer>
+</data-extraction-rules>

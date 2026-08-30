@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Backup rules for the application.
+   See https://developer.android.com/guide/topics/data/autobackup
+   for details.
+   Note: This file is ignored for devices older than API 31
+   See https://developer.android.com/about/versions/12/backup-restore
+-->
+<full-backup-content>
+    <!-- Never back up auth sessions/tokens or financial (earnings/withdrawal)
+         data. Restoring these onto another device would leak credentials or
+         duplicate money state. -->
+    <exclude domain="sharedpref" path="vyn9_auth_prefs.xml"/>
+    <exclude domain="sharedpref" path="vyn9_monetization_prefs.xml"/>
+    <exclude domain="sharedpref" path="vyn9_rewards_prefs.xml"/>
+    <exclude domain="sharedpref" path="vyn9_ad_attribution_prefs.xml"/>
+</full-backup-content>
