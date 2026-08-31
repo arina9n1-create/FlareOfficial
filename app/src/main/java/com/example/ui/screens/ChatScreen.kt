@@ -162,6 +162,7 @@ fun InstagramDirectInboxScreen(
     val searchQuery by viewModel.directSearchQuery.collectAsState()
     val selectedTab by viewModel.directInboxTab.collectAsState()
 
+    var showVynWorld by remember { mutableStateOf(false) }
     var selectedActionRoom by remember { mutableStateOf<LiveChatRoom?>(null) }
 
     val filteredRooms = remember(availableRooms, searchQuery, selectedTab) {
@@ -349,14 +350,20 @@ fun InstagramDirectInboxScreen(
                 ) {
                     listOf(
                         "PRIMARY" to "Primary",
-                        "GENERAL" to "General",
+                        "VYN_WORLD" to "Vyn World",
                         "CHANNELS" to "Channels",
                         "REQUESTS" to "Requests (${availableRooms.sumOf { it.unreadCount }})"
                     ).forEach { (key, label) ->
-                        val isSelected = selectedTab == key
+                        val isSelected = selectedTab == key && key != "VYN_WORLD"
                         Column(
                             modifier = Modifier
-                                .clickable { viewModel.setDirectInboxTab(key) }
+                                .clickable {
+                                    if (key == "VYN_WORLD") {
+                                        showVynWorld = true
+                                    } else {
+                                        viewModel.setDirectInboxTab(key)
+                                    }
+                                }
                                 .padding(vertical = 4.dp)
                         ) {
                             Text(
@@ -415,6 +422,16 @@ fun InstagramDirectInboxScreen(
             room = room,
             onDismiss = { selectedActionRoom = null },
             viewModel = viewModel
+        )
+    }
+
+    // VYN WORLD overlay — phone-number based communication system (separate from Primary)
+    if (showVynWorld) {
+        val vynWorldViewModel: com.example.ui.viewmodel.VynWorldViewModel =
+            androidx.lifecycle.viewmodel.compose.viewModel()
+        com.example.ui.screens.VynWorldScreen(
+            viewModel = vynWorldViewModel,
+            onDismiss = { showVynWorld = false }
         )
     }
 }
