@@ -199,32 +199,8 @@ fun InstagramDirectInboxScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Username with dropdown arrow
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { viewModel.toggleNoteCreator(true) }
-            ) {
-                Text(
-                                        text = profile.handle.ifBlank { "account" },
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Switch Account",
-                    tint = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.size(20.dp)
-                )
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(InstagramOrange, CircleShape)
-                )
-            }
+            // App brand title (same design as the main top bar)
+            VynBrandTitle()
 
             // Right Action Icons: Notes / Video Call / Edit Message
             Row(

@@ -41,6 +41,103 @@ import com.example.R
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainTab
 
+/**
+ * Vyn9 brand logo + title (monogram badge, VYN + glowing 9 pill, sparkle).
+ * Shared by VynTopBar and the Messages inbox header so the design stays identical.
+ */
+@Composable
+fun VynBrandTitle(modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier.testTag("app_logo_title")
+    ) {
+        // Sleek Monogram Icon Badge
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF6C5CE7),
+                            Color(0xFFFF007F),
+                            Color(0xFF00F2FE)
+                        )
+                    )
+                )
+                .padding(1.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "V",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    style = androidx.compose.ui.text.TextStyle(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF6C5CE7),
+                                Color(0xFFFF007F)
+                            )
+                        )
+                    )
+                )
+            }
+        }
+
+        // Brand Typography with Cyber-Capsule "9"
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "VYN",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            // Glowing Number 9 Pill Badge
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0xFFFF007F),
+                                Color(0xFF6C5CE7)
+                            )
+                        )
+                    )
+                    .padding(horizontal = 4.dp, vertical = 0.5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "9",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
+
+            // Social Sparkle
+            Text(
+                text = "✦",
+                fontSize = 8.sp,
+                color = Color(0xFF00F2FE),
+                modifier = Modifier.padding(start = 1.dp, bottom = 6.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun VynTopBar(
     title: String = "Vyn9",
@@ -117,96 +214,8 @@ fun VynTopBar(
                     }
                 }
 
-                // Beautiful Unique Brand Logo & Title Design
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.testTag("app_logo_title")
-                ) {
-                    // Sleek Monogram Icon Badge
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF6C5CE7),
-                                        Color(0xFFFF007F),
-                                        Color(0xFF00F2FE)
-                                    )
-                                )
-                            )
-                            .padding(1.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(7.dp))
-                                .background(MaterialTheme.colorScheme.surface),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "V",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Black,
-                                style = androidx.compose.ui.text.TextStyle(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            Color(0xFF6C5CE7),
-                                            Color(0xFFFF007F)
-                                        )
-                                    )
-                                )
-                            )
-                        }
-                    }
-
-                    // Brand Typography with Cyber-Capsule "9"
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = "VYN",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.5.sp,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        // Glowing Number 9 Pill Badge
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = listOf(
-                                            Color(0xFFFF007F),
-                                            Color(0xFF6C5CE7)
-                                        )
-                                    )
-                                )
-                                .padding(horizontal = 4.dp, vertical = 0.5.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "9",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                        }
-
-                        // Social Sparkle
-                        Text(
-                            text = "✦",
-                            fontSize = 8.sp,
-                            color = Color(0xFF00F2FE),
-                            modifier = Modifier.padding(start = 1.dp, bottom = 6.dp)
-                        )
-                    }
-                }
+                // Beautiful Unique Brand Logo & Title Design (shared composable)
+                VynBrandTitle()
             }
 
             Row(
