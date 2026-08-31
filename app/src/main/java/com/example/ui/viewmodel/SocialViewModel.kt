@@ -196,7 +196,7 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     val showFriendsListFullScreen: StateFlow<Boolean> = _showFriendsListFullScreen.asStateFlow()
 
     // Live Multi-User Chat States
-    private val _activeRoomId = MutableStateFlow("global_live")
+    private val _activeRoomId = MutableStateFlow("")
     val activeRoomId: StateFlow<String> = _activeRoomId.asStateFlow()
 
     private val _typingStatus = MutableStateFlow<String?>(null)
@@ -567,12 +567,9 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
                 .mapValues { (_, msgs) -> msgs.maxByOrNull { it.timestamp } }
 
             val roomIds = latestMessagesByRoom.keys.toMutableList()
-            if (!roomIds.contains("global_live")) roomIds.add(0, "global_live")
 
             roomIds.mapNotNull { roomId ->
-                if (roomId == "global_live") {
-                    LiveChatRoom("global_live", "Global Live Lounge", "Public chat & community", "GLOBAL", "default", 0, 0, true)
-                } else if (roomId.startsWith("dm_")) {
+                if (roomId.startsWith("dm_")) {
                     val partner = directPartnerHandle(roomId)
                     if (partner.isBlank()) return@mapNotNull null
                     
@@ -592,7 +589,7 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     null // Ignore malformed rooms
                 }
-            }.sortedByDescending { it.id == "global_live" }
+            }
         }.onEach { rooms ->
             _availableRooms.value = rooms
         }.launchIn(viewModelScope)
@@ -2122,7 +2119,7 @@ else {
                 _availableRooms.value = _availableRooms.value.filter { it.id != roomId }
                 if (_activeRoomId.value == roomId) {
                     _isInChatThread.value = false
-                    _activeRoomId.value = "global_live"
+                    _activeRoomId.value = ""
                 }
                 android.widget.Toast.makeText(getApplication(), "Chat deleted", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {

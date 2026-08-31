@@ -809,9 +809,6 @@ class SocialRepository(
         }
     }
 
-    suspend fun sendChatMessage(text: String, profile: UserProfileEntity) {
-        sendChatMessage("global_live", text, profile)
-    }
 
     suspend fun addStory(imageRes: String, storagePath: String?, caption: String, profile: UserProfileEntity) {
         val story = StoryEntity(

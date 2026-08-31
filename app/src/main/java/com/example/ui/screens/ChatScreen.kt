@@ -164,6 +164,7 @@ fun InstagramDirectInboxScreen(
     val selectedTab by viewModel.directInboxTab.collectAsState()
 
     var showVynNumber by remember { mutableStateOf(false) }
+    var showPersonalId by remember { mutableStateOf(false) }
     var selectedActionRoom by remember { mutableStateOf<LiveChatRoom?>(null) }
 
     val filteredRooms = remember(availableRooms, searchQuery, selectedTab) {
@@ -352,17 +353,17 @@ fun InstagramDirectInboxScreen(
                     listOf(
                         "PRIMARY" to "Primary",
                         "vyn_number" to "VYN NUMBER",
-                        "CHANNELS" to "Channels",
+                        "personal_id" to "Personal ID",
                         "REQUESTS" to "Requests (${availableRooms.sumOf { it.unreadCount }})"
                     ).forEach { (key, label) ->
-                        val isSelected = selectedTab == key && key != "vyn_number"
+                        val isSelected = selectedTab == key && key != "vyn_number" && key != "personal_id"
                         Column(
                             modifier = Modifier
                                 .clickable {
-                                    if (key == "vyn_number") {
-                                        showVynNumber = true
-                                    } else {
-                                        viewModel.setDirectInboxTab(key)
+                                    when (key) {
+                                        "vyn_number" -> showVynNumber = true
+                                        "personal_id" -> showPersonalId = true
+                                        else -> viewModel.setDirectInboxTab(key)
                                     }
                                 }
                                 .padding(vertical = 4.dp)
@@ -391,12 +392,6 @@ fun InstagramDirectInboxScreen(
                 )
             }
 
-            // --- 3. PINNED BROADCAST / GLOBAL LOUNGE CARD ---
-            item {
-                InstagramBroadcastChannelCard(
-                    onClick = { viewModel.openDirectThread("global_live") }
-                )
-            }
 
             // --- 4. CONVERSATION THREADS ---
             items(filteredRooms, key = { it.id }) { room ->
@@ -433,6 +428,16 @@ fun InstagramDirectInboxScreen(
         com.example.ui.screens.VynNumberScreen(
             viewModel = VynNumberViewModel,
             onDismiss = { showVynNumber = false }
+        )
+    }
+
+    // Personal ID overlay — private separate-identity messaging (never shows Vyn9 account)
+    if (showPersonalId) {
+        val PersonalIdViewModel: com.example.ui.viewmodel.PersonalIdViewModel =
+            androidx.lifecycle.viewmodel.compose.viewModel()
+        com.example.ui.screens.PersonalIdScreen(
+            viewModel = PersonalIdViewModel,
+            onDismiss = { showPersonalId = false }
         )
     }
 }
