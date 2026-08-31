@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -76,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -768,10 +770,10 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
 private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String, maxBubbleWidth: Dp = 300.dp) {
     val isMine = msg.senderIdentityId == myIdentityId
     val align = if (isMine) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (isMine) {
+    val bubbleColor: Brush = if (isMine) {
         Brush.linearGradient(listOf(Color(0xFF833AB4), Color(0xFFE1306C), Color(0xFFFF6938)))
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        Brush.linearGradient(listOf(MaterialTheme.colorScheme.surfaceVariant))
     }
     val textColor = if (isMine) Color.White else MaterialTheme.colorScheme.onSurface
 
@@ -788,8 +790,8 @@ private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String, 
                 ),
                 color = if (isMine) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant,
                 modifier = if (isMine) Modifier.background(
-                    bubbleColor,
-                    RoundedCornerShape(
+                    brush = bubbleColor,
+                    shape = RoundedCornerShape(
                         topStart = 18.dp, topEnd = 18.dp,
                         bottomStart = 18.dp, bottomEnd = 4.dp
                     )
