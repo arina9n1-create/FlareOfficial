@@ -5,9 +5,11 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -571,6 +573,7 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
 
     var input by remember { mutableStateOf("") }
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var pendingDeleteMessage by remember { mutableStateOf<VynNumberMessage?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -704,7 +707,14 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
                 }
             } else {
                 items(messages, key = { it.id }) { msg ->
-                    VynNumberMessageBubble(msg, me, bubbleMaxWidth)
+                    VynNumberMessageBubble(
+                        msg = msg,
+                        myIdentityId = me,
+                        maxBubbleWidth = bubbleMaxWidth,
+                        onLongPress = {
+                            if (msg.senderIdentityId == me) pendingDeleteMessage = msg
+                        }
+                    )
                 }
             }
         }
@@ -801,11 +811,35 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
             onDismiss = { showSettingsSheet = false }
         )
     }
+
+    // Delete message confirmation dialog (long-press on your own message)
+    pendingDeleteMessage?.let { m ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteMessage = null },
+            title = { Text("Delete message?", fontWeight = FontWeight.Bold) },
+            text = { Text("You can only delete your own messages. It will be removed for everyone in this chat.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteMessage(m.id)
+                    pendingDeleteMessage = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteMessage = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 /** A single VYN NUMBER message bubble — Instagram DM style (responsive). */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String, maxBubbleWidth: Dp = 300.dp) {
+private fun VynNumberMessageBubble(
+    msg: VynNumberMessage,
+    myIdentityId: String,
+    maxBubbleWidth: Dp = 300.dp,
+    onLongPress: () -> Unit = {}
+) {
     val isMine = msg.senderIdentityId == myIdentityId
     val align = if (isMine) Alignment.CenterEnd else Alignment.CenterStart
     val bubbleColor: Brush = if (isMine) {
@@ -815,7 +849,13 @@ private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String, 
     }
     val textColor = if (isMine) Color.White else MaterialTheme.colorScheme.onSurface
 
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = align) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .combinedClickable(onClick = {}, onLongClick = onLongPress),
+        contentAlignment = align
+    ) {
         Column(
             horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
             modifier = Modifier.widthIn(max = maxBubbleWidth)

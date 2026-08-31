@@ -463,6 +463,21 @@ class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Deletes (unsends) one of the caller's own messages, then reloads the thread. */
+    fun deleteMessage(messageId: String) {
+        val s = _step.value as? VynNumberStep.Chat ?: return
+        viewModelScope.launch {
+            service.deleteMessage(s.conversationId, messageId)
+                .onSuccess {
+                    _messages.value = _messages.value.filterNot { it.id == messageId }
+                    service.messages(s.conversationId)
+                        .onSuccess { arr -> _messages.value = parseMessages(arr) }
+                    refreshInbox()
+                }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not delete message") }
+        }
+    }
+
     private fun startPolling(conversationId: String) {
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
