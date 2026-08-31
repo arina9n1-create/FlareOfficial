@@ -14,11 +14,8 @@ import org.json.JSONObject
 
 /** State machine of the VYN NUMBER tab. */
 sealed class VynNumberStep {
-    /** No active phone session — show phone entry / OTP verification. */
+    /** No active phone session — show the sign up / log in screen. */
     data object Setup : VynNumberStep()
-
-    /** OTP sent, waiting for the user to enter the code. */
-    data class Otp(val phone: String, val resendInSec: Int) : VynNumberStep()
 
     /** Verified + activated — show the VYN NUMBER home (number, search, chats). */
     data class Home(val phone: String, val displayName: String) : VynNumberStep()
@@ -55,7 +52,6 @@ class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val TAG = "VynNumberViewModel"
-        private const val RESEND_COOLDOWN_SEC = 60
     }
 
     private val service = VynNumberService(app)
@@ -97,7 +93,6 @@ class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
     var myIdentityId: String = ""
         private set
 
-    private var resendJob: Job? = null
     private var pollJob: Job? = null
 
     init {
@@ -110,75 +105,43 @@ class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
     fun dismissError() { _error.value = null }
 
     // ---------------------------------------------------------------------------
-    // OTP flow
+    // Auth flow (phone number + password — no OTP/SMS)
     // ---------------------------------------------------------------------------
 
-    fun requestOtp(rawPhone: String) {
+    /** Creates a new VYN NUMBER account with phone + password. */
+    fun signUp(rawPhone: String, password: String) {
+        authenticate(rawPhone, password) { p, pw -> service.signUpWithPhone(p, pw) }
+    }
+
+    /** Logs in to an existing VYN NUMBER with phone + password. */
+    fun login(rawPhone: String, password: String) {
+        authenticate(rawPhone, password) { p, pw -> service.signInWithPhone(p, pw) }
+    }
+
+    private fun authenticate(
+        rawPhone: String,
+        password: String,
+        call: suspend (String, String) -> Result<String>
+    ) {
         if (_loading.value) return
         if (!service.isValidPhone(rawPhone)) {
             _error.value = "Please enter a valid phone number"
             return
         }
-        viewModelScope.launch {
-            _loading.value = true
-            _error.value = null
-            service.sendOtp(rawPhone)
-                .onSuccess { normalized ->
-                    startResendCooldown()
-                    _step.value = VynNumberStep.Otp(normalized, RESEND_COOLDOWN_SEC)
-                }
-                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not send the verification code") }
-            _loading.value = false
-        }
-    }
-
-    fun resendOtp() {
-        val current = _step.value as? VynNumberStep.Otp ?: return
-        if (current.resendInSec > 0 || _loading.value) return
-        viewModelScope.launch {
-            _loading.value = true
-            service.sendOtp(current.phone)
-                .onSuccess { startResendCooldown() }
-                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not resend the code") }
-            _loading.value = false
-        }
-    }
-
-    private fun startResendCooldown() {
-        resendJob?.cancel()
-        resendJob = viewModelScope.launch {
-            var remaining = RESEND_COOLDOWN_SEC
-            while (remaining > 0) {
-                val s = _step.value
-                if (s is VynNumberStep.Otp) _step.value = s.copy(resendInSec = remaining)
-                delay(1000)
-                remaining--
-            }
-        }
-    }
-
-    fun verifyOtp(code: String) {
-        val current = _step.value as? VynNumberStep.Otp ?: return
-        if (_loading.value) return
-        if (code.trim().length < 6) {
-            _error.value = "Enter the 6-digit verification code"
+        if (password.length < 6) {
+            _error.value = "Password must be at least 6 characters"
             return
         }
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
-            service.verifyOtp(current.phone, code)
+            call(rawPhone, password)
                 .onSuccess { activate() }
                 .onFailure { e: Throwable ->
-                    _error.value = friendly(e, "Verification failed — check the code and try again")
+                    _error.value = friendly(e, "Authentication failed — try again")
                 }
             _loading.value = false
         }
-    }
-
-    fun editPhoneNumber() {
-        resendJob?.cancel()
-        _step.value = VynNumberStep.Setup
     }
 
     /** Wipes only the VYN NUMBER session — the Vyn9 account stays logged in. */
@@ -429,7 +392,6 @@ class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         pollJob?.cancel()
-        resendJob?.cancel()
         super.onCleared()
     }
 

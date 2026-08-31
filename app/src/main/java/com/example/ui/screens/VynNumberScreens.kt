@@ -133,8 +133,7 @@ fun VynNumberScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         when (val s = step) {
-            is VynNumberStep.Setup -> VynNumberPhoneEntry(viewModel, loading)
-            is VynNumberStep.Otp   -> VynNumberOtpEntry(viewModel, s, loading)
+            is VynNumberStep.Setup -> VynNumberAuthScreen(viewModel, loading)
             is VynNumberStep.Home   -> VynNumberHome(viewModel, s)
             is VynNumberStep.Chat   -> VynNumberConversation(viewModel, s)
         }
@@ -146,12 +145,14 @@ fun VynNumberScreen(
 }
 
 /* =============================================================================
-   SCREEN 1 — PHONE NUMBER ENTRY
+   SCREEN 1 — AUTH (SIGN UP / LOG IN WITH NUMBER + PASSWORD)
    ========================================================================== */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VynNumberPhoneEntry(viewModel: VynNumberViewModel, loading: Boolean) {
+private fun VynNumberAuthScreen(viewModel: VynNumberViewModel, loading: Boolean) {
+    var isSignUp by remember { mutableStateOf(true) }
     var raw by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -173,8 +174,10 @@ private fun VynNumberPhoneEntry(viewModel: VynNumberViewModel, loading: Boolean)
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            text = "Enter your phone number to verify",
+            text = if (isSignUp) "Create your VYN NUMBER\nPhone number + password"
+                   else "Log in to your VYN NUMBER",
             fontSize = 15.sp, color = VynTextSecondary,
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(bottom = 28.dp)
         )
 
@@ -198,80 +201,30 @@ private fun VynNumberPhoneEntry(viewModel: VynNumberViewModel, loading: Boolean)
         }
 
         Spacer(Modifier.height(10.dp))
-        Button(
-            onClick = { viewModel.requestOtp(raw) },
-            enabled = !loading && raw.isNotBlank() && viewModel.isValidPhone(raw),
-            modifier = Modifier.fillMaxWidth().height(46.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            if (loading) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-                Spacer(Modifier.width(8.dp))
-            }
-            Text("Send OTP", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
-
-/* =============================================================================
-   SCREEN 2 — OTP VERIFICATION
-   ========================================================================== */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun VynNumberOtpEntry(viewModel: VynNumberViewModel, step: VynNumberStep.Otp, loading: Boolean) {
-    var code by remember { mutableStateOf("") }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Verify ${step.phone}",
-            fontSize = 20.sp, fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            text = "Enter the 6-digit code sent via SMS",
-            fontSize = 14.sp, color = VynTextSecondary,
-            modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
-        )
-
         OutlinedTextField(
-            value = code,
-            onValueChange = { if (it.length <= 6) code = it.filter { c -> c.isDigit() } },
-            label = { Text("OTP code") },
-            placeholder = { Text("000000") },
+            value = password,
+            onValueChange = { if (it.length <= 72) password = it },
+            label = { Text("Password") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             enabled = !loading,
+            isError = password.isNotBlank() && password.length < 6,
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
         )
-
-        if (step.resendInSec > 0) {
-            Text(text = "Resend in ${step.resendInSec}s", fontSize = 13.sp, color = VynTextSecondary)
-        } else {
-            TextButton(
-                onClick = { viewModel.resendOtp() },
-                enabled = !loading,
+        if (password.isNotBlank() && password.length < 6) {
+            Text(
+                "Password must be at least 6 characters",
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.align(Alignment.Start)
-            ) {
-                Text("Resend code", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
-            }
+            )
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
         Button(
-            onClick = { viewModel.verifyOtp(code.trim()) },
-            enabled = !loading && code.length == 6,
+            onClick = {
+                if (isSignUp) viewModel.signUp(raw, password) else viewModel.login(raw, password)
+            },
+            enabled = !loading && raw.isNotBlank() && password.length >= 6 && viewModel.isValidPhone(raw),
             modifier = Modifier.fillMaxWidth().height(46.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -283,15 +236,22 @@ private fun VynNumberOtpEntry(viewModel: VynNumberViewModel, step: VynNumberStep
                 )
                 Spacer(Modifier.width(8.dp))
             }
-            Text("Verify", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = if (isSignUp) "Create account" else "Log in",
+                fontSize = 15.sp, fontWeight = FontWeight.SemiBold
+            )
         }
 
         TextButton(
-            onClick = { viewModel.editPhoneNumber() },
+            onClick = { isSignUp = !isSignUp },
             enabled = !loading,
             modifier = Modifier.padding(top = 8.dp)
         ) {
-            Text("Use a different number", fontSize = 12.sp, color = VynTextSecondary)
+            Text(
+                text = if (isSignUp) "Already have a VYN NUMBER? Log in"
+                       else "New here? Create an account",
+                fontSize = 13.sp, color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

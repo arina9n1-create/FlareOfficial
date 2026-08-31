@@ -20,14 +20,15 @@ import java.util.concurrent.TimeUnit
  * VYN NUMBER networking layer.
  *
  * IMPORTANT SESSION ISOLATION: VYN NUMBER uses its OWN Supabase phone-auth session
- * (created via OTP). That session is persisted in a SEPARATE SharedPreferences file
+ * (created via phone number + password — no OTP/SMS). That session is persisted in a
+ * SEPARATE SharedPreferences file
  * ("vyn_number_prefs") so it NEVER overwrites the main Vyn9 account session stored in
  * "vyn9_auth_prefs". Logging into VYN NUMBER can therefore never sign the user out of
  * their Vyn9 account, and vice versa.
  *
  * The same phone number always produces the same Supabase phone-auth user, so the
  * same number resolves to the same persistent VYN NUMBER identity on any device or
- * Vyn9 account — after successful OTP verification only.
+ * Vyn9 account — after successful phone + password authentication only.
  */
 class VynNumberService(private val context: Context) {
 
@@ -65,39 +66,37 @@ class VynNumberService(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------------
-    // OTP / phone-auth session
+    // Phone-auth session (phone number + password — no OTP/SMS needed).
+    // Requires "Confirm phone" to be disabled (autoconfirm ON) in Supabase Auth,
+    // so /auth/v1/signup returns the session directly without sending any SMS.
     // ---------------------------------------------------------------------------
 
-    /** Sends an SMS OTP. Creates the Supabase phone-auth user if it doesn't exist yet. */
-    suspend fun sendOtp(rawPhone: String): Result<String> = withContext(Dispatchers.IO) {
-        val phone = normalizePhone(rawPhone)
-            ?: return@withContext Result.failure(IllegalArgumentException("Invalid phone number"))
-        try {
-            val payload = JSONObject().put("phone", phone).put("create_user", true)
-            val request = Request.Builder()
-                .url("${Backend.URL}/auth/v1/otp")
-                .headers(Headers.Builder().add("apikey", Backend.KEY).build())
-                .post(payload.toString().toRequestBody(JSON))
-                .build()
-            execute(request)
-            Result.success(phone)
-        } catch (e: Exception) {
-            Log.e(TAG, "sendOtp failed", e)
-            Result.failure(e)
-        }
-    }
+    /** Creates a new Supabase phone-auth user with phone + password (no SMS). */
+    suspend fun signUpWithPhone(rawPhone: String, password: String): Result<String> =
+        phoneAuth(isSignUp = true, rawPhone = rawPhone, password = password)
 
-    /** Verifies the OTP and persists the VYN NUMBER phone session. */
-    suspend fun verifyOtp(rawPhone: String, code: String): Result<String> = withContext(Dispatchers.IO) {
+    /** Logs in an existing Supabase phone-auth user with phone + password. */
+    suspend fun signInWithPhone(rawPhone: String, password: String): Result<String> =
+        phoneAuth(isSignUp = false, rawPhone = rawPhone, password = password)
+
+    private suspend fun phoneAuth(
+        isSignUp: Boolean,
+        rawPhone: String,
+        password: String
+    ): Result<String> = withContext(Dispatchers.IO) {
         val phone = normalizePhone(rawPhone)
             ?: return@withContext Result.failure(IllegalArgumentException("Invalid phone number"))
+        if (password.length < 6) {
+            return@withContext Result.failure(
+                IllegalArgumentException("Password must be at least 6 characters")
+            )
+        }
         try {
-            val payload = JSONObject()
-                .put("type", "sms")
-                .put("phone", phone)
-                .put("token", code.trim())
+            val url = if (isSignUp) "${Backend.URL}/auth/v1/signup"
+                      else "${Backend.URL}/auth/v1/token?grant_type=password"
+            val payload = JSONObject().put("phone", phone).put("password", password)
             val request = Request.Builder()
-                .url("${Backend.URL}/auth/v1/verify")
+                .url(url)
                 .headers(Headers.Builder().add("apikey", Backend.KEY).build())
                 .post(payload.toString().toRequestBody(JSON))
                 .build()
@@ -105,14 +104,14 @@ class VynNumberService(private val context: Context) {
             val accessToken = obj.optString("access_token", "")
             if (accessToken.isBlank()) {
                 val msg = obj.optString("msg").ifBlank {
-                    obj.optString("error_description", "Invalid verification code")
-                }
+                    obj.optString("error_description", "Authentication failed")
+                }.ifBlank { obj.optString("message", "Authentication failed") }
                 return@withContext Result.failure(Exception(msg))
             }
             persistSession(obj, phone)
             Result.success(phone)
         } catch (e: Exception) {
-            Log.e(TAG, "verifyOtp failed", e)
+            Log.e(TAG, "phoneAuth(signUp=$isSignUp) failed", e)
             Result.failure(e)
         }
     }
@@ -142,7 +141,7 @@ class VynNumberService(private val context: Context) {
 
     /**
      * Returns a usable phone-session access token: refreshes it when expired.
-     * Null means the user must re-verify with OTP.
+     * Null means the user must re-authenticate with their number + password.
      */
     suspend fun ensureSessionToken(): String? = withContext(Dispatchers.IO) {
         val token = prefs.getString("access_token", null)?.takeIf { it.isNotBlank() }
@@ -278,9 +277,23 @@ class VynNumberService(private val context: Context) {
         val response = client.newCall(request).execute()
         val body = response.body?.string().orEmpty()
         if (!response.isSuccessful) {
-            throw IOException("HTTP ${response.code}: ${body.take(300)}")
+            throw IOException("HTTP ${response.code}: ${extractErrorMessage(body)}")
         }
         return body
+    }
+
+    /**
+     * Pulls a human-readable message out of a Supabase/PostgREST error body.
+     * Shapes handled: {"msg":...}, {"error_description":...}, {"message":...},
+     * {"error":...}, {"hint":...} — falls back to a short raw snippet.
+     */
+    private fun extractErrorMessage(body: String): String = try {
+        val obj = JSONObject(body)
+        listOf("msg", "error_description", "message", "error", "hint")
+            .firstNotNullOfOrNull { key -> obj.optString(key, "").takeIf { it.isNotBlank() } }
+            ?: body.take(200)
+    } catch (e: Exception) {
+        body.take(200)
     }
 }
 
