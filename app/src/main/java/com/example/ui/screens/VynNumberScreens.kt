@@ -39,13 +39,35 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MarkChatUnread
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonOff
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -548,6 +570,7 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
     val sending by viewModel.sending.collectAsState()
 
     var input by remember { mutableStateOf("") }
+    var showSettingsSheet by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -631,6 +654,10 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
                 }
                 IconButton(onClick = { /* Video call */ }) {
                     Icon(Icons.Default.Videocam, "Video Call", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                }
+                // Settings menu
+                IconButton(onClick = { showSettingsSheet = true }) {
+                    Icon(Icons.Default.MoreVert, "Chat settings", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
                 }
             }
         }
@@ -763,6 +790,17 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
             }
         }
     }
+
+    // Chat settings bottom sheet
+    if (showSettingsSheet) {
+        VynNumberChatSettingsSheet(
+            conversationId = step.conversationId,
+            peerPhone = step.peerPhone,
+            peerName = step.peerName,
+            viewModel = viewModel,
+            onDismiss = { showSettingsSheet = false }
+        )
+    }
 }
 
 /** A single VYN NUMBER message bubble — Instagram DM style (responsive). */
@@ -801,6 +839,124 @@ private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String, 
                     text = msg.text, fontSize = 15.sp, color = textColor,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun VynNumberChatSettingsSheet(
+    conversationId: String,
+    peerPhone: String,
+    peerName: String,
+    viewModel: VynNumberViewModel,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(vertical = 8.dp)
+                    .width(40.dp).height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+            )
+            Text("Chat Settings", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
+            SettingsRow(Icons.Default.PushPin, "Pin chat", { viewModel.togglePin(conversationId); onDismiss() })
+            SettingsRow(Icons.Default.Star, "Favorite", { viewModel.toggleFavorite(conversationId); onDismiss() })
+            SettingsRow(Icons.Default.VolumeOff, "Mute notifications", { viewModel.toggleMute(conversationId); onDismiss() })
+            SettingsRow(Icons.Default.Archive, "Archive chat", { viewModel.toggleArchive(conversationId); onDismiss() })
+            SettingsRow(Icons.Default.MarkEmailUnread, "Mark as unread", { viewModel.markUnread(conversationId); onDismiss() })
+            SettingsRow(Icons.Default.DeleteSweep, "Clear history", { viewModel.clearHistory(conversationId); onDismiss() }, MaterialTheme.colorScheme.error)
+            SettingsRow(Icons.Default.DeleteForever, "Delete conversation", { viewModel.deleteConversation(conversationId); onDismiss() }, MaterialTheme.colorScheme.error)
+            SettingsRow(Icons.Default.Block, "Block $peerPhone", { viewModel.blockUser(peerPhone); onDismiss() }, MaterialTheme.colorScheme.error)
+            SettingsRow(Icons.Default.Flag, "Report", { onDismiss() })
+        }
+    }
+}
+
+@Composable
+private fun SettingsRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+        Text(text = label, fontSize = 15.sp, color = tint)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun VynNumberReportSheet(
+    peerPhone: String,
+    viewModel: VynNumberViewModel,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val reasons = listOf(
+        "Spam or scam", "Harassment or bullying", "Hate speech or symbols",
+        "Violence or dangerous content", "Nudity or sexual content",
+        "False information", "Other"
+    )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(vertical = 8.dp)
+                    .width(40.dp).height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+            )
+            Text("Report $peerPhone", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+            reasons.forEach { reason ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onDismiss() }
+                        .padding(vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    Text(text = reason, fontSize = 15.sp)
+                }
             }
         }
     }

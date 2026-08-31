@@ -34,7 +34,11 @@ data class VynNumberChatItem(
     val peerName: String,
     val lastPreview: String,
     val lastAt: Long?,       // epoch millis
-    val unreadCount: Int
+    val unreadCount: Int,
+    val isPinned: Boolean = false,
+    val isMuted: Boolean = false,
+    val isArchived: Boolean = false,
+    val isFavorite: Boolean = false
 )
 
 data class VynNumberMessage(
@@ -196,7 +200,11 @@ class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
                                 peerName = o.optString("peer_name", ""),
                                 lastPreview = o.optString("last_message_preview", ""),
                                 lastAt = parseMillis(o.opt("last_message_at")),
-                                unreadCount = o.optInt("unread_count", 0)
+                                unreadCount = o.optInt("unread_count", 0),
+                                isPinned = o.optBoolean("is_pinned", false),
+                                isMuted = o.optBoolean("is_muted", false),
+                                isArchived = o.optBoolean("is_archived", false),
+                                isFavorite = o.optBoolean("is_favorite", false)
                             )
                         )
                     }
@@ -287,6 +295,83 @@ class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             service.markRead(conversationId)
                 .onFailure { e: Throwable -> Log.e(TAG, "markRead failed", e) }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Chat settings (pin, mute, archive, favorite, block)
+    // ---------------------------------------------------------------------------
+
+    fun togglePin(conversationId: String) {
+        viewModelScope.launch {
+            service.togglePin(conversationId)
+                .onSuccess { refreshInbox() }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not pin chat") }
+        }
+    }
+
+    fun toggleMute(conversationId: String) {
+        viewModelScope.launch {
+            service.toggleMute(conversationId)
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not mute chat") }
+        }
+    }
+
+    fun toggleArchive(conversationId: String) {
+        viewModelScope.launch {
+            service.toggleArchive(conversationId)
+                .onSuccess { refreshInbox() }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not archive chat") }
+        }
+    }
+
+    fun toggleFavorite(conversationId: String) {
+        viewModelScope.launch {
+            service.toggleFavorite(conversationId)
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not favorite chat") }
+        }
+    }
+
+    fun markUnread(conversationId: String) {
+        viewModelScope.launch {
+            service.markUnread(conversationId)
+                .onSuccess { refreshInbox() }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not mark unread") }
+        }
+    }
+
+    fun clearHistory(conversationId: String) {
+        viewModelScope.launch {
+            service.clearHistory(conversationId)
+                .onSuccess {
+                    _messages.value = emptyList()
+                    refreshInbox()
+                }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not clear history") }
+        }
+    }
+
+    fun deleteConversation(conversationId: String) {
+        viewModelScope.launch {
+            service.deleteConversation(conversationId)
+                .onSuccess { backFromChat() }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not delete conversation") }
+        }
+    }
+
+    fun blockUser(peerPhone: String) {
+        viewModelScope.launch {
+            service.blockUser(peerPhone)
+                .onSuccess { backFromChat() }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not block user") }
+        }
+    }
+
+    fun reportUser(peerPhone: String, reason: String) {
+        viewModelScope.launch {
+            service.reportUser(peerPhone, reason)
+                .onSuccess { _error.value = "Report submitted — thank you" }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "Could not submit report") }
         }
     }
 
