@@ -325,7 +325,7 @@ fun InstagramDirectInboxScreen(
         ) {
             // --- 1. INSTAGRAM NOTES TRAY ---
             item {
-                Column(modifier = Modifier.padding(top = 10.dp, bottom = 12.dp)) {
+                Column(modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)) {
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(horizontal = 14.dp),
@@ -352,7 +352,7 @@ fun InstagramDirectInboxScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -372,7 +372,7 @@ fun InstagramDirectInboxScreen(
                                         else -> viewModel.setDirectInboxTab(key)
                                     }
                                 }
-                                .padding(vertical = 4.dp)
+                                .padding(vertical = 2.dp)
                         ) {
                             Text(
                                 text = label,
@@ -394,7 +394,7 @@ fun InstagramDirectInboxScreen(
                 }
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
-                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                    modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
                 )
             }
 
@@ -464,12 +464,12 @@ fun InstagramNoteItem(
             .width(80.dp)
             .clickable { onClick() }
     ) {
-        // Thought bubble on top with FIXED uniform height & size so avatar never gets pushed or resized!
+            // Thought bubble on top with FIXED uniform height & size so avatar never gets pushed or resized!
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(42.dp)
-                .padding(bottom = 2.dp),
+                .padding(bottom = 0.dp),
             contentAlignment = Alignment.Center
         ) {
             Surface(
@@ -555,7 +555,7 @@ fun InstagramNoteItem(
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = if (note.isMe) "Your note" else note.name.split(" ").firstOrNull() ?: note.handle,
             fontSize = 11.sp,
