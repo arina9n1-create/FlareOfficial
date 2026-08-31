@@ -952,7 +952,7 @@ class SocialRepository(
             addNotification(
                 username = existing.handle,
                 avatarType = existing.avatarType,
-                actionText = "followed you back! You are now Friends 🤝🎉"
+                                actionText = "followed you back! You are now Friends 🤝🎉"
             )
         } else if (newFollowing) {
             addNotification(
@@ -962,13 +962,12 @@ class SocialRepository(
             )
         }
 
-        // Notify the followed user on the server so THEY receive a notification
-        // ("X started following you — Follow back!"). Only on a fresh follow.
+        // Notify the followed user on the server so THEY receive a notification.
         if (newFollowing) {
             supabaseService.sendFollowNotification(
                 targetHandle = existing.handle,
                 actionText = if (newIsFriend) "followed you back — you are now Friends 🤝🎉"
-                             else "started following you — Follow back! 🤝"
+                             else "started following you 🤝"
             )
         }
 

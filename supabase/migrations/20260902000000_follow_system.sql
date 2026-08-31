@@ -54,7 +54,7 @@ BEGIN
         v_actor_handle,
         v_actor_handle,
         v_actor_avatar,
-        COALESCE(NULLIF(btrim(p_action), ''), 'started following you — Follow back! 🤝'),
+                COALESCE(NULLIF(btrim(p_action), ''), 'started following you 🤝'),
         FALSE,
         (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT,
         'Just now',
