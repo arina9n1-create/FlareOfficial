@@ -59,6 +59,7 @@ fun ChatScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
             .testTag("instagram_chat_screen_root")
     ) {
         Crossfade(
