@@ -19,16 +19,17 @@ import java.util.concurrent.TimeUnit
 /**
  * VYN NUMBER networking layer.
  *
- * IMPORTANT SESSION ISOLATION: VYN NUMBER uses its OWN Supabase phone-auth session
- * (created via phone number + password — no OTP/SMS). That session is persisted in a
- * SEPARATE SharedPreferences file
+ * IMPORTANT SESSION ISOLATION: VYN NUMBER uses its OWN Supabase auth session
+ * (created via number + password — the number maps to a hidden deterministic
+ * email, so no SMS/OTP or SMS provider is ever needed). That session is persisted
+ * in a SEPARATE SharedPreferences file
  * ("vyn_number_prefs") so it NEVER overwrites the main Vyn9 account session stored in
  * "vyn9_auth_prefs". Logging into VYN NUMBER can therefore never sign the user out of
  * their Vyn9 account, and vice versa.
  *
- * The same phone number always produces the same Supabase phone-auth user, so the
- * same number resolves to the same persistent VYN NUMBER identity on any device or
- * Vyn9 account — after successful phone + password authentication only.
+ * The same phone number always maps to the same hidden auth email, so the
+ * same number resolves to the same persistent VYN NUMBER identity on any device
+ * or Vyn9 account — after successful number + password authentication only.
  */
 class VynNumberService(private val context: Context) {
 
@@ -66,16 +67,24 @@ class VynNumberService(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------------
-    // Phone-auth session (phone number + password — no OTP/SMS needed).
-    // Requires "Confirm phone" to be disabled (autoconfirm ON) in Supabase Auth,
-    // so /auth/v1/signup returns the session directly without sending any SMS.
+    // Auth session (number + password, backed by Supabase email+password auth).
+    // We deliberately do NOT use Supabase phone auth — hosted projects require a
+    // paid SMS provider for it. Instead the number maps to a deterministic hidden
+    // email ("vyn.<digits>@vyn-number.app") and we use the free email provider.
+    // "Confirm email" must be OFF so signup returns the session with no mail sent.
     // ---------------------------------------------------------------------------
 
-    /** Creates a new Supabase phone-auth user with phone + password (no SMS). */
+    /** Hidden deterministic email for a phone number (digits only, no '+'). */
+    private fun pseudoEmail(normalizedPhone: String): String {
+        val digits = normalizedPhone.filter { it.isDigit() }
+        return "vyn.$digits@vyn-number.app"
+    }
+
+    /** Creates a new VYN NUMBER account with number + password (no SMS/email). */
     suspend fun signUpWithPhone(rawPhone: String, password: String): Result<String> =
         phoneAuth(isSignUp = true, rawPhone = rawPhone, password = password)
 
-    /** Logs in an existing Supabase phone-auth user with phone + password. */
+    /** Logs in to an existing VYN NUMBER with number + password. */
     suspend fun signInWithPhone(rawPhone: String, password: String): Result<String> =
         phoneAuth(isSignUp = false, rawPhone = rawPhone, password = password)
 
@@ -94,7 +103,9 @@ class VynNumberService(private val context: Context) {
         try {
             val url = if (isSignUp) "${Backend.URL}/auth/v1/signup"
                       else "${Backend.URL}/auth/v1/token?grant_type=password"
-            val payload = JSONObject().put("phone", phone).put("password", password)
+            val payload = JSONObject()
+                .put("email", pseudoEmail(phone))
+                .put("password", password)
             val request = Request.Builder()
                 .url(url)
                 .headers(Headers.Builder().add("apikey", Backend.KEY).build())
