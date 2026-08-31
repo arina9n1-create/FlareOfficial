@@ -1,4 +1,4 @@
-package com.example.data.vynworld
+﻿package com.example.data.VynNumber
 
 import android.content.Context
 import android.util.Base64
@@ -17,23 +17,23 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Vyn World networking layer.
+ * VYN NUMBER networking layer.
  *
- * IMPORTANT SESSION ISOLATION: Vyn World uses its OWN Supabase phone-auth session
+ * IMPORTANT SESSION ISOLATION: VYN NUMBER uses its OWN Supabase phone-auth session
  * (created via OTP). That session is persisted in a SEPARATE SharedPreferences file
- * ("vyn_world_prefs") so it NEVER overwrites the main Vyn9 account session stored in
- * "vyn9_auth_prefs". Logging into Vyn World can therefore never sign the user out of
+ * ("vyn_number_prefs") so it NEVER overwrites the main Vyn9 account session stored in
+ * "vyn9_auth_prefs". Logging into VYN NUMBER can therefore never sign the user out of
  * their Vyn9 account, and vice versa.
  *
  * The same phone number always produces the same Supabase phone-auth user, so the
- * same number resolves to the same persistent Vyn World identity on any device or
+ * same number resolves to the same persistent VYN NUMBER identity on any device or
  * Vyn9 account — after successful OTP verification only.
  */
-class VynWorldService(private val context: Context) {
+class VynNumberService(private val context: Context) {
 
     companion object {
-        private const val TAG = "VynWorldService"
-        private const val PREFS = "vyn_world_prefs"
+        private const val TAG = "VynNumberService"
+        private const val PREFS = "vyn_number_prefs"
         private val JSON = "application/json; charset=utf-8".toMediaType()
     }
 
@@ -46,7 +46,7 @@ class VynWorldService(private val context: Context) {
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
     // ---------------------------------------------------------------------------
-    // Phone normalization — must match the server-side vw_normalize_phone exactly.
+    // Phone normalization — must match the server-side vn_normalize_phone exactly.
     // ---------------------------------------------------------------------------
     /** Normalizes to E.164 (BD default like the server): 01712... -> +8801712... */
     fun normalizePhone(raw: String): String? {
@@ -87,7 +87,7 @@ class VynWorldService(private val context: Context) {
         }
     }
 
-    /** Verifies the OTP and persists the Vyn World phone session. */
+    /** Verifies the OTP and persists the VYN NUMBER phone session. */
     suspend fun verifyOtp(rawPhone: String, code: String): Result<String> = withContext(Dispatchers.IO) {
         val phone = normalizePhone(rawPhone)
             ?: return@withContext Result.failure(IllegalArgumentException("Invalid phone number"))
@@ -135,7 +135,7 @@ class VynWorldService(private val context: Context) {
 
     fun savedPhone(): String = prefs.getString("phone", "") ?: ""
 
-    /** Wipes only the Vyn World session (never touches the Vyn9 account session). */
+    /** Wipes only the VYN NUMBER session (never touches the Vyn9 account session). */
     fun clearSession() {
         prefs.edit().clear().apply()
     }
@@ -166,7 +166,7 @@ class VynWorldService(private val context: Context) {
                 .apply()
             newToken
         } catch (e: Exception) {
-            Log.e(TAG, "Vyn World session refresh failed", e)
+            Log.e(TAG, "VYN NUMBER session refresh failed", e)
             null
         }
     }
@@ -189,7 +189,7 @@ class VynWorldService(private val context: Context) {
 
     private suspend fun rpc(name: String, payload: JSONObject): String = withContext(Dispatchers.IO) {
         val token = ensureSessionToken()
-            ?: throw Exception("Vyn World session expired — please verify your number again")
+            ?: throw Exception("VYN NUMBER session expired — please verify your number again")
         val request = Request.Builder()
             .url("${Backend.URL}/rest/v1/rpc/$name")
             .headers(vwHeaders(token))
@@ -205,15 +205,15 @@ class VynWorldService(private val context: Context) {
 
     /** Activates (first time) or loads (every later time) the identity of this phone. */
     suspend fun activateIdentity(): Result<JSONObject> = try {
-        Result.success(JSONObject(rpc("vw_activate_identity", JSONObject())))
+        Result.success(JSONObject(rpc("vn_activate_identity", JSONObject())))
     } catch (e: Exception) {
         Log.e(TAG, "activateIdentity failed", e)
         Result.failure(e)
     }
 
-    /** Checks whether a normalized number is active on Vyn World (no private data exposed). */
+    /** Checks whether a normalized number is active on VYN NUMBER (no private data exposed). */
     suspend fun searchNumber(rawPhone: String): Result<JSONObject> = try {
-        Result.success(JSONObject(rpc("vw_search_number", JSONObject().put("p_phone", rawPhone))))
+        Result.success(JSONObject(rpc("vn_search_number", JSONObject().put("p_phone", rawPhone))))
     } catch (e: Exception) {
         Log.e(TAG, "searchNumber failed", e)
         Result.failure(e)
@@ -221,21 +221,21 @@ class VynWorldService(private val context: Context) {
 
     /** Opens (or returns the existing) 1:1 conversation with a peer phone. */
     suspend fun openConversation(rawPhone: String): Result<JSONObject> = try {
-        Result.success(JSONObject(rpc("vw_open_conversation", JSONObject().put("p_peer_phone", rawPhone))))
+        Result.success(JSONObject(rpc("vn_open_conversation", JSONObject().put("p_peer_phone", rawPhone))))
     } catch (e: Exception) {
         Log.e(TAG, "openConversation failed", e)
         Result.failure(e)
     }
 
     suspend fun inbox(): Result<JSONArray> = try {
-        Result.success(JSONArray(rpc("vw_inbox", JSONObject())))
+        Result.success(JSONArray(rpc("vn_inbox", JSONObject())))
     } catch (e: Exception) {
         Log.e(TAG, "inbox failed", e)
         Result.failure(e)
     }
 
     suspend fun messages(conversationId: String): Result<JSONArray> = try {
-        Result.success(JSONArray(rpc("vw_messages", JSONObject().put("p_conversation_id", conversationId))))
+        Result.success(JSONArray(rpc("vn_messages", JSONObject().put("p_conversation_id", conversationId))))
     } catch (e: Exception) {
         Log.e(TAG, "messages failed", e)
         Result.failure(e)
@@ -252,14 +252,14 @@ class VynWorldService(private val context: Context) {
             .put("p_message_text", text)
             .put("p_media_url", mediaUrl)
             .put("p_media_type", mediaType)
-        Result.success(JSONObject(rpc("vw_send_message", payload)))
+        Result.success(JSONObject(rpc("vn_send_message", payload)))
     } catch (e: Exception) {
         Log.e(TAG, "sendMessage failed", e)
         Result.failure(e)
     }
 
     suspend fun markRead(conversationId: String): Result<Unit> = try {
-        rpc("vw_mark_read", JSONObject().put("p_conversation_id", conversationId))
+        rpc("vn_mark_read", JSONObject().put("p_conversation_id", conversationId))
         Result.success(Unit)
     } catch (e: Exception) {
         Log.e(TAG, "markRead failed", e)
@@ -267,7 +267,7 @@ class VynWorldService(private val context: Context) {
     }
 
     suspend fun updateProfile(displayName: String): Result<JSONObject> = try {
-        Result.success(JSONObject(rpc("vw_update_profile", JSONObject().put("p_display_name", displayName))))
+        Result.success(JSONObject(rpc("vn_update_profile", JSONObject().put("p_display_name", displayName))))
     } catch (e: Exception) {
         Log.e(TAG, "updateProfile failed", e)
         Result.failure(e)

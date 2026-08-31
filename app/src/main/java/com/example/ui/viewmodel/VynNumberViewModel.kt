@@ -1,10 +1,10 @@
-package com.example.ui.viewmodel
+﻿package com.example.ui.viewmodel
 
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.vynworld.VynWorldService
+import com.example.data.VynNumber.VynNumberService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,26 +12,26 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-/** State machine of the Vyn World tab. */
-sealed class VynWorldStep {
+/** State machine of the VYN NUMBER tab. */
+sealed class VynNumberStep {
     /** No active phone session — show phone entry / OTP verification. */
-    data object Setup : VynWorldStep()
+    data object Setup : VynNumberStep()
 
     /** OTP sent, waiting for the user to enter the code. */
-    data class Otp(val phone: String, val resendInSec: Int) : VynWorldStep()
+    data class Otp(val phone: String, val resendInSec: Int) : VynNumberStep()
 
-    /** Verified + activated — show the Vyn World home (number, search, chats). */
-    data class Home(val phone: String, val displayName: String) : VynWorldStep()
+    /** Verified + activated — show the VYN NUMBER home (number, search, chats). */
+    data class Home(val phone: String, val displayName: String) : VynNumberStep()
 
-    /** Inside a Vyn World conversation. */
+    /** Inside a VYN NUMBER conversation. */
     data class Chat(
         val conversationId: String,
         val peerPhone: String,
         val peerName: String
-    ) : VynWorldStep()
+    ) : VynNumberStep()
 }
 
-data class VynWorldChatItem(
+data class VynNumberChatItem(
     val conversationId: String,
     val peerPhone: String,
     val peerName: String,
@@ -40,7 +40,7 @@ data class VynWorldChatItem(
     val unreadCount: Int
 )
 
-data class VynWorldMessage(
+data class VynNumberMessage(
     val id: String,
     val senderIdentityId: String,
     val text: String,
@@ -51,20 +51,20 @@ data class VynWorldMessage(
     val createdAt: String = ""
 )
 
-class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
+class VynNumberViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
-        private const val TAG = "VynWorldViewModel"
+        private const val TAG = "VynNumberViewModel"
         private const val RESEND_COOLDOWN_SEC = 60
     }
 
-    private val service = VynWorldService(app)
+    private val service = VynNumberService(app)
 
     /** Delegates phone validation to the service (matches server-side normalization). */
     fun isValidPhone(raw: String): Boolean = service.isValidPhone(raw)
 
-    private val _step = MutableStateFlow<VynWorldStep>(VynWorldStep.Setup)
-    val step: StateFlow<VynWorldStep> = _step
+    private val _step = MutableStateFlow<VynNumberStep>(VynNumberStep.Setup)
+    val step: StateFlow<VynNumberStep> = _step
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
@@ -72,14 +72,14 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    private val _chats = MutableStateFlow<List<VynWorldChatItem>>(emptyList())
-    val chats: StateFlow<List<VynWorldChatItem>> = _chats
+    private val _chats = MutableStateFlow<List<VynNumberChatItem>>(emptyList())
+    val chats: StateFlow<List<VynNumberChatItem>> = _chats
 
     private val _chatsLoading = MutableStateFlow(false)
     val chatsLoading: StateFlow<Boolean> = _chatsLoading
 
-    private val _messages = MutableStateFlow<List<VynWorldMessage>>(emptyList())
-    val messages: StateFlow<List<VynWorldMessage>> = _messages
+    private val _messages = MutableStateFlow<List<VynNumberMessage>>(emptyList())
+    val messages: StateFlow<List<VynNumberMessage>> = _messages
 
     private val _msgsLoading = MutableStateFlow(false)
     val msgsLoading: StateFlow<Boolean> = _msgsLoading
@@ -90,10 +90,10 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending
 
-    /** Aliases used by the Vyn World composables. */
-    val chatMessages: StateFlow<List<VynWorldMessage>> = _messages
+    /** Aliases used by the VYN NUMBER composables. */
+    val chatMessages: StateFlow<List<VynNumberMessage>> = _messages
 
-    /** The caller's own Vyn World identity id (empty until activated). */
+    /** The caller's own VYN NUMBER identity id (empty until activated). */
     var myIdentityId: String = ""
         private set
 
@@ -125,7 +125,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
             service.sendOtp(rawPhone)
                 .onSuccess { normalized ->
                     startResendCooldown()
-                    _step.value = VynWorldStep.Otp(normalized, RESEND_COOLDOWN_SEC)
+                    _step.value = VynNumberStep.Otp(normalized, RESEND_COOLDOWN_SEC)
                 }
                 .onFailure { e: Throwable -> _error.value = friendly(e, "Could not send the verification code") }
             _loading.value = false
@@ -133,7 +133,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resendOtp() {
-        val current = _step.value as? VynWorldStep.Otp ?: return
+        val current = _step.value as? VynNumberStep.Otp ?: return
         if (current.resendInSec > 0 || _loading.value) return
         viewModelScope.launch {
             _loading.value = true
@@ -150,7 +150,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
             var remaining = RESEND_COOLDOWN_SEC
             while (remaining > 0) {
                 val s = _step.value
-                if (s is VynWorldStep.Otp) _step.value = s.copy(resendInSec = remaining)
+                if (s is VynNumberStep.Otp) _step.value = s.copy(resendInSec = remaining)
                 delay(1000)
                 remaining--
             }
@@ -158,7 +158,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun verifyOtp(code: String) {
-        val current = _step.value as? VynWorldStep.Otp ?: return
+        val current = _step.value as? VynNumberStep.Otp ?: return
         if (_loading.value) return
         if (code.trim().length < 6) {
             _error.value = "Enter the 6-digit verification code"
@@ -178,15 +178,15 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
 
     fun editPhoneNumber() {
         resendJob?.cancel()
-        _step.value = VynWorldStep.Setup
+        _step.value = VynNumberStep.Setup
     }
 
-    /** Wipes only the Vyn World session — the Vyn9 account stays logged in. */
-    fun signOutVynWorld() {
+    /** Wipes only the VYN NUMBER session — the Vyn9 account stays logged in. */
+    fun signOutVynNumber() {
         service.clearSession()
         _chats.value = emptyList()
         _messages.value = emptyList()
-        _step.value = VynWorldStep.Setup
+        _step.value = VynNumberStep.Setup
     }
 
     /** Loads (or lazily creates) the identity of the verified phone session. */
@@ -197,7 +197,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
             service.activateIdentity()
                 .onSuccess { identity ->
                     myIdentityId = identity.optString("identity_id", "")
-                    _step.value = VynWorldStep.Home(
+                    _step.value = VynNumberStep.Home(
                         phone = identity.optString("phone"),
                         displayName = identity.optString("display_name", "")
                     )
@@ -207,8 +207,8 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
                     Log.e(TAG, "activate failed", e)
                     // Session unusable -> force re-verification.
                     service.clearSession()
-                    _step.value = VynWorldStep.Setup
-                    _error.value = friendly(e, "Could not activate Vyn World — verify your number again")
+                    _step.value = VynNumberStep.Setup
+                    _error.value = friendly(e, "Could not activate VYN NUMBER — verify your number again")
                 }
             _loading.value = false
         }
@@ -223,11 +223,11 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
             _chatsLoading.value = true
             service.inbox()
                 .onSuccess { arr ->
-                    val items = mutableListOf<VynWorldChatItem>()
+                    val items = mutableListOf<VynNumberChatItem>()
                     for (i in 0 until arr.length()) {
                         val o = arr.optJSONObject(i) ?: continue
                         items.add(
-                            VynWorldChatItem(
+                            VynNumberChatItem(
                                 conversationId = o.optString("conversation_id"),
                                 peerPhone = o.optString("peer_phone"),
                                 peerName = o.optString("peer_name", ""),
@@ -265,7 +265,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
     fun normalizeNumber(raw: String): String? = service.normalizePhone(raw)
 
 
-    /** Opens a chat with a number (must be active on Vyn World). */
+    /** Opens a chat with a number (must be active on VYN NUMBER). */
     fun openChatWith(rawPhone: String) {
         if (_loading.value) return
         viewModelScope.launch {
@@ -280,12 +280,12 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
                         peerName = o.optString("peer_name", "")
                     )
                 }
-                .onFailure { e: Throwable -> _error.value = friendly(e, "This number is not active on Vyn World") }
+                .onFailure { e: Throwable -> _error.value = friendly(e, "This number is not active on VYN NUMBER") }
             _loading.value = false
         }
     }
 
-    fun openExistingChat(item: VynWorldChatItem) {
+    fun openExistingChat(item: VynNumberChatItem) {
         enterChat(item.conversationId, item.peerPhone, item.peerName)
     }
 
@@ -368,7 +368,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
         }
 
     private fun enterChat(conversationId: String, peerPhone: String, peerName: String) {
-        _step.value = VynWorldStep.Chat(conversationId, peerPhone, peerName)
+        _step.value = VynNumberStep.Chat(conversationId, peerPhone, peerName)
         viewModelScope.launch {
             _msgsLoading.value = true
             service.messages(conversationId)
@@ -385,13 +385,13 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
         _messages.value = emptyList()
         _msgsLoading.value = false
         viewModelScope.launch {
-            if (s is VynWorldStep.Chat) service.markRead(s.conversationId)
+            if (s is VynNumberStep.Chat) service.markRead(s.conversationId)
             refreshInbox()
         }
-        _step.value = if (s is VynWorldStep.Chat) {
-            VynWorldStep.Home(phone = service.savedPhone(), displayName = "")
+        _step.value = if (s is VynNumberStep.Chat) {
+            VynNumberStep.Home(phone = service.savedPhone(), displayName = "")
         } else {
-            VynWorldStep.Setup
+            VynNumberStep.Setup
         }
     }
 
@@ -400,7 +400,7 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------------------
 
     fun sendText(text: String) {
-        val s = _step.value as? VynWorldStep.Chat ?: return
+        val s = _step.value as? VynNumberStep.Chat ?: return
         val body = text.trim()
         if (body.isEmpty() || _sending.value) return
         viewModelScope.launch {
@@ -437,12 +437,12 @@ class VynWorldViewModel(app: Application) : AndroidViewModel(app) {
     // Helpers
     // ---------------------------------------------------------------------------
 
-    private fun parseMessages(arr: org.json.JSONArray): List<VynWorldMessage> {
-        val out = mutableListOf<VynWorldMessage>()
+    private fun parseMessages(arr: org.json.JSONArray): List<VynNumberMessage> {
+        val out = mutableListOf<VynNumberMessage>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             out.add(
-                VynWorldMessage(
+                VynNumberMessage(
                     id = o.optString("id"),
                     senderIdentityId = o.optString("sender_identity_id"),
                     text = o.optString("message_text", ""),

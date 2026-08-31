@@ -1,4 +1,4 @@
-package com.example.ui.screens
+﻿package com.example.ui.screens
 
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -32,7 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Person
@@ -70,10 +70,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.data.vynworld.VynWorldService
+import com.example.data.VynNumber.VynNumberService
 import com.example.ui.theme.InstagramOrange
 import com.example.ui.theme.VynTextSecondary
-import com.example.ui.viewmodel.VynWorldViewModel
+import com.example.ui.viewmodel.VynNumberViewModel
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -85,9 +85,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.core.content.ContextCompat
-import com.example.ui.viewmodel.VynWorldChatItem
-import com.example.ui.viewmodel.VynWorldMessage
-import com.example.ui.viewmodel.VynWorldStep
+import com.example.ui.viewmodel.VynNumberChatItem
+import com.example.ui.viewmodel.VynNumberMessage
+import com.example.ui.viewmodel.VynNumberStep
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -95,15 +95,15 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * VYN WORLD — phone-number-based communication system.
+ * VYN NUMBER — phone-number-based communication system.
  *
  * Completely separate from Primary (Vyn9 account) chats: identity, conversations
  * and messages live in their own tables with a dedicated phone-auth session.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VynWorldScreen(
-    viewModel: VynWorldViewModel,
+fun VynNumberScreen(
+    viewModel: VynNumberViewModel,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null
@@ -121,10 +121,10 @@ fun VynWorldScreen(
     }
 
     val activity = LocalContext.current as? Activity
-    BackHandler(enabled = onBack != null || onDismiss != null || step is VynWorldStep.Chat) {
+    BackHandler(enabled = onBack != null || onDismiss != null || step is VynNumberStep.Chat) {
         val s = step
         when {
-            s is VynWorldStep.Chat -> viewModel.backFromChat()
+            s is VynNumberStep.Chat -> viewModel.backFromChat()
             onDismiss != null      -> onDismiss()
             onBack != null         -> onBack()
             activity != null       -> activity.finish()
@@ -133,10 +133,10 @@ fun VynWorldScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         when (val s = step) {
-            is VynWorldStep.Setup -> VynWorldPhoneEntry(viewModel, loading)
-            is VynWorldStep.Otp   -> VynWorldOtpEntry(viewModel, s, loading)
-            is VynWorldStep.Home   -> VynWorldHome(viewModel, s)
-            is VynWorldStep.Chat   -> VynWorldConversation(viewModel, s)
+            is VynNumberStep.Setup -> VynNumberPhoneEntry(viewModel, loading)
+            is VynNumberStep.Otp   -> VynNumberOtpEntry(viewModel, s, loading)
+            is VynNumberStep.Home   -> VynNumberHome(viewModel, s)
+            is VynNumberStep.Chat   -> VynNumberConversation(viewModel, s)
         }
         SnackbarHost(
             hostState = snackbarHostState,
@@ -150,7 +150,7 @@ fun VynWorldScreen(
    ========================================================================== */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VynWorldPhoneEntry(viewModel: VynWorldViewModel, loading: Boolean) {
+private fun VynNumberPhoneEntry(viewModel: VynNumberViewModel, loading: Boolean) {
     var raw by remember { mutableStateOf("") }
 
     Column(
@@ -168,7 +168,7 @@ private fun VynWorldPhoneEntry(viewModel: VynWorldViewModel, loading: Boolean) {
             modifier = Modifier.size(80.dp).padding(bottom = 24.dp)
         )
         Text(
-            text = "Vyn World",
+            text = "VYN NUMBER",
             fontSize = 28.sp, fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.primary
         )
@@ -222,7 +222,7 @@ private fun VynWorldPhoneEntry(viewModel: VynWorldViewModel, loading: Boolean) {
    ========================================================================== */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VynWorldOtpEntry(viewModel: VynWorldViewModel, step: VynWorldStep.Otp, loading: Boolean) {
+private fun VynNumberOtpEntry(viewModel: VynNumberViewModel, step: VynNumberStep.Otp, loading: Boolean) {
     var code by remember { mutableStateOf("") }
 
     Column(
@@ -299,7 +299,7 @@ private fun VynWorldOtpEntry(viewModel: VynWorldViewModel, step: VynWorldStep.Ot
 /* SCREEN 3 — HOME */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VynWorldHome(viewModel: VynWorldViewModel, home: VynWorldStep.Home) {
+private fun VynNumberHome(viewModel: VynNumberViewModel, home: VynNumberStep.Home) {
     val chats by viewModel.chats.collectAsState()
     val searchResult by viewModel.searchResult.collectAsState()
     val chatsLoading by viewModel.chatsLoading.collectAsState()
@@ -318,10 +318,10 @@ private fun VynWorldHome(viewModel: VynWorldViewModel, home: VynWorldStep.Home) 
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text("Vyn World", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = VynTextSecondary)
+                Text("VYN NUMBER", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = VynTextSecondary)
                 Text(text = home.phone, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             }
-            TextButton(onClick = { viewModel.signOutVynWorld() }) {
+            TextButton(onClick = { viewModel.signOutVynNumber() }) {
                 Icon(Icons.Default.Edit, "Change", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }
         }
@@ -346,7 +346,7 @@ private fun VynWorldHome(viewModel: VynWorldViewModel, home: VynWorldStep.Home) 
             )
             if (searchQuery.isNotBlank()) {
                 IconButton(onClick = { viewModel.searchNumber(searchQuery) }) {
-                    Icon(Icons.Default.ArrowForward, "Check number", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Check number", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                 }
             }
         }
@@ -373,7 +373,7 @@ private fun VynWorldHome(viewModel: VynWorldViewModel, home: VynWorldStep.Home) 
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = if (isActive) "$foundPhone is on Vyn World" else "This number is not active on Vyn World.",
+                        text = if (isActive) "$foundPhone is on VYN NUMBER" else "This number is not active on VYN NUMBER.",
                         fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(text = if (isActive) "Tap to start chatting" else "Try another number", fontSize = 12.sp, color = VynTextSecondary)
@@ -406,24 +406,24 @@ private fun VynWorldHome(viewModel: VynWorldViewModel, home: VynWorldStep.Home) 
                 Column(Modifier.fillMaxWidth().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Forum, null, tint = VynTextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(52.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text(text = "No Vyn World chats yet.", fontSize = 14.sp, color = VynTextSecondary, textAlign = TextAlign.Center)
+                    Text(text = "No VYN NUMBER chats yet.", fontSize = 14.sp, color = VynTextSecondary, textAlign = TextAlign.Center)
                 }
             }
             else -> {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(chats, key = { it.conversationId }) { item ->
-                        VynWorldChatListItem(item) { viewModel.openExistingChat(item) }
+                        VynNumberChatListItem(item) { viewModel.openExistingChat(item) }
                     }
                     item { Spacer(Modifier.height(30.dp)) }
                 }
             }
         }
     }
-    if (showContacts) VynWorldContactsPicker(viewModel = viewModel, onDismiss = { showContacts = false })
+    if (showContacts) VynNumberContactsPicker(viewModel = viewModel, onDismiss = { showContacts = false })
 }
 
 @Composable
-private fun VynWorldChatListItem(item: VynWorldChatItem, onClick: () -> Unit) {
+private fun VynNumberChatListItem(item: VynNumberChatItem, onClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -476,7 +476,7 @@ private fun formatVwTime(millis: Long?): String = millis?.let { ms ->
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VynWorldContactsPicker(viewModel: VynWorldViewModel, onDismiss: () -> Unit) {
+private fun VynNumberContactsPicker(viewModel: VynNumberViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var contacts by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var permissionDenied by remember { mutableStateOf(false) }
@@ -569,7 +569,7 @@ private fun VynWorldContactsPicker(viewModel: VynWorldViewModel, onDismiss: () -
 /* SCREEN 4 — CONVERSATION */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VynWorldConversation(viewModel: VynWorldViewModel, step: VynWorldStep.Chat) {
+private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumberStep.Chat) {
     val messages by viewModel.messages.collectAsState()
     val msgsLoading by viewModel.msgsLoading.collectAsState()
     val me = viewModel.myIdentityId
@@ -632,7 +632,7 @@ private fun VynWorldConversation(viewModel: VynWorldViewModel, step: VynWorldSte
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 items(messages, key = { it.id }) { msg ->
-                    VynWorldMessageBubble(msg, myIdentityId = me)
+                    VynNumberMessageBubble(msg, myIdentityId = me)
                 }
             }
         }
@@ -687,9 +687,9 @@ private fun VynWorldConversation(viewModel: VynWorldViewModel, step: VynWorldSte
     }
 }
 
-/** A single Vyn World message bubble. */
+/** A single VYN NUMBER message bubble. */
 @Composable
-private fun VynWorldMessageBubble(msg: VynWorldMessage, myIdentityId: String) {
+private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String) {
     val isMine = msg.senderIdentityId == myIdentityId
     val align = if (isMine) Alignment.CenterEnd else Alignment.CenterStart
     val bubbleColor = if (isMine) MaterialTheme.colorScheme.primary

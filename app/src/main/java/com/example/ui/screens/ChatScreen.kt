@@ -1,4 +1,4 @@
-package com.example.ui.screens
+﻿package com.example.ui.screens
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -162,7 +162,7 @@ fun InstagramDirectInboxScreen(
     val searchQuery by viewModel.directSearchQuery.collectAsState()
     val selectedTab by viewModel.directInboxTab.collectAsState()
 
-    var showVynWorld by remember { mutableStateOf(false) }
+    var showVynNumber by remember { mutableStateOf(false) }
     var selectedActionRoom by remember { mutableStateOf<LiveChatRoom?>(null) }
 
     val filteredRooms = remember(availableRooms, searchQuery, selectedTab) {
@@ -350,16 +350,16 @@ fun InstagramDirectInboxScreen(
                 ) {
                     listOf(
                         "PRIMARY" to "Primary",
-                        "VYN_WORLD" to "Vyn World",
+                        "vyn_number" to "VYN NUMBER",
                         "CHANNELS" to "Channels",
                         "REQUESTS" to "Requests (${availableRooms.sumOf { it.unreadCount }})"
                     ).forEach { (key, label) ->
-                        val isSelected = selectedTab == key && key != "VYN_WORLD"
+                        val isSelected = selectedTab == key && key != "vyn_number"
                         Column(
                             modifier = Modifier
                                 .clickable {
-                                    if (key == "VYN_WORLD") {
-                                        showVynWorld = true
+                                    if (key == "vyn_number") {
+                                        showVynNumber = true
                                     } else {
                                         viewModel.setDirectInboxTab(key)
                                     }
@@ -425,13 +425,13 @@ fun InstagramDirectInboxScreen(
         )
     }
 
-    // VYN WORLD overlay — phone-number based communication system (separate from Primary)
-    if (showVynWorld) {
-        val vynWorldViewModel: com.example.ui.viewmodel.VynWorldViewModel =
+    // VYN NUMBER overlay — phone-number based communication system (separate from Primary)
+    if (showVynNumber) {
+        val VynNumberViewModel: com.example.ui.viewmodel.VynNumberViewModel =
             androidx.lifecycle.viewmodel.compose.viewModel()
-        com.example.ui.screens.VynWorldScreen(
-            viewModel = vynWorldViewModel,
-            onDismiss = { showVynWorld = false }
+        com.example.ui.screens.VynNumberScreen(
+            viewModel = VynNumberViewModel,
+            onDismiss = { showVynNumber = false }
         )
     }
 }
