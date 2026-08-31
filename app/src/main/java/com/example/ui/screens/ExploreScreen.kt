@@ -65,8 +65,9 @@ fun ExploreScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .testTag("explore_screen_list"),
-        contentPadding = PaddingValues(bottom = 90.dp)
+        contentPadding = PaddingValues(bottom = 90.dp, top = 12.dp)
     ) {
         // Search Bar
         item {

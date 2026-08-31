@@ -597,7 +597,7 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
+            // Root VynNumberScreen Box already applies statusBarsPadding(); no double here.
             .imePadding()
     ) {
         // Header — Instagram DM style (responsive)

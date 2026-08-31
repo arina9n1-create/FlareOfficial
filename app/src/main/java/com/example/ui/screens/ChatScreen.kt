@@ -1045,9 +1045,8 @@ fun InstagramConversationScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
+            // Root ChatScreen Box already applies statusBarsPadding(); no double here.
             // We use imePadding() to push the input bar up with the keyboard.
-            // No navigationBarsPadding() here because it's already handled by the bottom composer's surface if needed.
             .imePadding()
             .testTag("instagram_conversation_screen")
     ) {
