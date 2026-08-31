@@ -268,11 +268,99 @@ class VynNumberService(private val context: Context) {
         Result.failure(e)
     }
 
+    /** Deletes (unsends) one of the caller's own messages in a conversation. */
+    suspend fun deleteMessage(conversationId: String, messageId: String): Result<Unit> = try {
+        val payload = JSONObject()
+            .put("p_conversation_id", conversationId)
+            .put("p_message_id", messageId)
+        rpc("vn_delete_message", payload)
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "deleteMessage failed", e)
+        Result.failure(e)
+    }
+
     suspend fun markRead(conversationId: String): Result<Unit> = try {
         rpc("vn_mark_read", JSONObject().put("p_conversation_id", conversationId))
         Result.success(Unit)
     } catch (e: Exception) {
         Log.e(TAG, "markRead failed", e)
+        Result.failure(e)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Chat settings (pin, mute, archive, favorite, block)
+    // ---------------------------------------------------------------------------
+
+    suspend fun togglePin(conversationId: String): Result<Unit> = try {
+        rpc("vn_toggle_pin", JSONObject().put("p_conversation_id", conversationId))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "togglePin failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun toggleMute(conversationId: String): Result<Unit> = try {
+        rpc("vn_toggle_mute", JSONObject().put("p_conversation_id", conversationId))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "toggleMute failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun toggleArchive(conversationId: String): Result<Unit> = try {
+        rpc("vn_toggle_archive", JSONObject().put("p_conversation_id", conversationId))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "toggleArchive failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun toggleFavorite(conversationId: String): Result<Unit> = try {
+        rpc("vn_toggle_favorite", JSONObject().put("p_conversation_id", conversationId))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "toggleFavorite failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun markUnread(conversationId: String): Result<Unit> = try {
+        rpc("vn_mark_unread", JSONObject().put("p_conversation_id", conversationId))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "markUnread failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun clearHistory(conversationId: String): Result<Unit> = try {
+        rpc("vn_clear_history", JSONObject().put("p_conversation_id", conversationId))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "clearHistory failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun deleteConversation(conversationId: String): Result<Unit> = try {
+        rpc("vn_delete_conversation", JSONObject().put("p_conversation_id", conversationId))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "deleteConversation failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun blockUser(peerPhone: String): Result<Unit> = try {
+        rpc("vn_block_user", JSONObject().put("p_peer_phone", peerPhone))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "blockUser failed", e)
+        Result.failure(e)
+    }
+
+    suspend fun reportUser(peerPhone: String, reason: String): Result<Unit> = try {
+        rpc("vn_report_user", JSONObject().put("p_peer_phone", peerPhone).put("p_reason", reason))
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "reportUser failed", e)
         Result.failure(e)
     }
 
