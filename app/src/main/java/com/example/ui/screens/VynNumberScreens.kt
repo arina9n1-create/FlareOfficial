@@ -186,7 +186,7 @@ fun VynNumberScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VynNumberAuthScreen(viewModel: VynNumberViewModel, loading: Boolean) {
-    var isSignUp by remember { mutableStateOf(true) }
+    var isSignUp by remember { mutableStateOf(false) }
     var raw by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
