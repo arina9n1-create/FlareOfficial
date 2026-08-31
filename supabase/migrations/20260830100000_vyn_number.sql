@@ -247,7 +247,7 @@ BEGIN
     IF me.id IS NULL THEN
         RAISE EXCEPTION 'VYN NUMBER is not activated for this account';
     END IF;
-    SELECT COALESCE(jsonb_agg(row ORDER BY last_message_at DESC NULLS LAST), '[]'::jsonb)
+    SELECT COALESCE(jsonb_agg(row ORDER BY (row->>'last_message_at') DESC NULLS LAST), '[]'::jsonb)
     INTO result
     FROM (
         SELECT jsonb_build_object(
@@ -291,7 +291,7 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Not a member of this conversation';
     END IF;
-    SELECT COALESCE(jsonb_agg(row ORDER BY created_at), '[]'::jsonb)
+    SELECT COALESCE(jsonb_agg(row ORDER BY (row->>'created_at')), '[]'::jsonb)
     INTO result
     FROM (
         SELECT jsonb_build_object(
