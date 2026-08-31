@@ -167,6 +167,12 @@ fun InstagramDirectInboxScreen(
     var showPersonalId by remember { mutableStateOf(false) }
     var selectedActionRoom by remember { mutableStateOf<LiveChatRoom?>(null) }
 
+    // Keep MainActivity's bottom bar hidden while a full-screen chat overlay is open,
+    // the same way it hides for Primary chat threads.
+    LaunchedEffect(showVynNumber, showPersonalId) {
+        viewModel.setChatOverlayOpen(showVynNumber || showPersonalId)
+    }
+
     val filteredRooms = remember(availableRooms, searchQuery, selectedTab) {
         availableRooms.filter { room ->
             val matchesSearch = room.title.contains(searchQuery, ignoreCase = true) ||

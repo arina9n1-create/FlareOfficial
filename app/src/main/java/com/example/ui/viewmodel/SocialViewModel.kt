@@ -232,6 +232,15 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     private val _isInChatThread = MutableStateFlow(false)
     val isInChatThread: StateFlow<Boolean> = _isInChatThread.asStateFlow()
 
+    /** True when the VYN NUMBER or Personal ID full-screen chat overlay is open. */
+    private val _chatOverlayOpen = MutableStateFlow(false)
+    val chatOverlayOpen: StateFlow<Boolean> = _chatOverlayOpen.asStateFlow()
+
+    /** Called by ChatScreen when a VYN NUMBER / Personal ID overlay opens or closes. */
+    fun setChatOverlayOpen(open: Boolean) {
+        _chatOverlayOpen.value = open
+    }
+
     private val _directSearchQuery = MutableStateFlow("")
     val directSearchQuery: StateFlow<String> = _directSearchQuery.asStateFlow()
 

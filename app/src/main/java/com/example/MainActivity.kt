@@ -194,8 +194,9 @@ fun MainAppScreen(
     }
 
     val isInChatThread by viewModel.isInChatThread.collectAsState()
+    val chatOverlayOpen by viewModel.chatOverlayOpen.collectAsState()
     val showMainTopBar = !(currentTab == MainTab.CHAT || currentTab == MainTab.REELS || currentTab == MainTab.SEARCH)
-    val showMainBottomBar = !(currentTab == MainTab.CHAT && isInChatThread)
+    val showMainBottomBar = !(currentTab == MainTab.CHAT && (isInChatThread || chatOverlayOpen))
 
     // Scroll-to-hide logic
     var isBarsVisible by remember { mutableStateOf(true) }
