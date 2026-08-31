@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,12 +35,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonOff
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -59,10 +64,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -71,6 +79,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
 import com.example.data.VynNumber.VynNumberService
 import com.example.ui.theme.InstagramOrange
 import com.example.ui.theme.VynTextSecondary
@@ -527,16 +536,30 @@ private fun VynNumberContactsPicker(viewModel: VynNumberViewModel, onDismiss: ()
     }
 }
 
-/* SCREEN 4 — CONVERSATION */
+/* SCREEN 4 — CONVERSATION (mirrors Primary InstagramConversationScreen) */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumberStep.Chat) {
     val messages by viewModel.messages.collectAsState()
     val msgsLoading by viewModel.msgsLoading.collectAsState()
     val me = viewModel.myIdentityId
+    val sending by viewModel.sending.collectAsState()
 
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    // Auto-detect screen size for responsive layout
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    val isCompact = screenWidthDp < 360
+    val isLarge = screenWidthDp >= 600
+
+    // Responsive sizing
+    val horizontalPadding = if (isCompact) 8.dp else if (isLarge) 24.dp else 16.dp
+    val bubbleMaxWidth = if (isCompact) 260.dp else if (isLarge) 400.dp else 300.dp
+    val avatarSize = if (isCompact) 36.dp else 42.dp
+    val headerFontSize = if (isCompact) 14.sp else 16.sp
 
     LaunchedEffect(step.conversationId) {
         viewModel.markRead(step.conversationId)
@@ -549,27 +572,64 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
             .imePadding()
     ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Header — Instagram DM style (responsive)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.background,
+            tonalElevation = 2.dp
         ) {
-            IconButton(onClick = { viewModel.backFromChat() }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onBackground)
-            }
-            Spacer(Modifier.width(6.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = step.peerName.ifBlank { step.peerPhone },
-                    fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(text = step.peerPhone, fontSize = 12.sp, color = VynTextSecondary)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = horizontalPadding, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                IconButton(onClick = { viewModel.backFromChat() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onBackground)
+                }
+                // Avatar with online indicator
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    Box(
+                        modifier = Modifier
+                            .size(avatarSize)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = (step.peerName.ifBlank { step.peerPhone }).take(1).uppercase(),
+                            fontSize = (avatarSize.value * 0.45f).sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(Color(0xFF00E676), CircleShape)
+                            .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = step.peerName.ifBlank { step.peerPhone },
+                        fontSize = headerFontSize, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(text = "Active now", fontSize = 12.sp, color = VynTextSecondary)
+                }
+                // Call buttons (Instagram style)
+                IconButton(onClick = { /* Audio call */ }) {
+                    Icon(Icons.Default.Call, "Audio Call", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = { /* Video call */ }) {
+                    Icon(Icons.Default.Videocam, "Video Call", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                }
             }
         }
         androidx.compose.material3.HorizontalDivider(
@@ -577,109 +637,169 @@ private fun VynNumberConversation(viewModel: VynNumberViewModel, step: VynNumber
             thickness = 1.dp
         )
 
-        // Messages list
-        if (msgsLoading) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            }
-        } else if (messages.isEmpty()) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text("No messages yet.", fontSize = 13.sp, color = VynTextSecondary)
-            }
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
-            ) {
+        // Messages stream (responsive)
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = horizontalPadding, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (msgsLoading) {
+                item {
+                    Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
+                }
+            } else if (messages.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier.fillParentMaxSize().padding(bottom = 120.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Forum, null,
+                            tint = VynTextSecondary.copy(alpha = 0.4f),
+                            modifier = Modifier.size(56.dp)
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "No messages yet.",
+                            fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text("Say hi 👋", fontSize = 13.sp, color = VynTextSecondary)
+                    }
+                }
+            } else {
                 items(messages, key = { it.id }) { msg ->
-                    VynNumberMessageBubble(msg, myIdentityId = me)
+                    VynNumberMessageBubble(msg, me, bubbleMaxWidth)
                 }
             }
         }
 
-        // Input bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Input bar — Instagram style (responsive)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.background,
+            tonalElevation = 2.dp
         ) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = { if (it.length <= 1000) input = it },
-                placeholder = { Text("Message...", fontSize = 14.sp, color = VynTextSecondary) },
-                shape = RoundedCornerShape(22.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                ),
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface),
-                modifier = Modifier.weight(1f),
-                singleLine = false,
-                maxLines = 4
-            )
-            Spacer(Modifier.width(6.dp))
-            IconButton(
-                onClick = {
-                    val text = input.trim()
-                    if (text.isNotEmpty()) {
-                        viewModel.sendText(text)
-                        input = ""
-                    }
-                },
-                enabled = !viewModel.sending.value && input.trim().isNotBlank(),
+            Row(
                 modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        if (input.trim().isNotBlank()) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                        CircleShape
-                    )
+                    .fillMaxWidth()
+                    .padding(horizontal = horizontalPadding, vertical = 8.dp)
+                    .navigationBarsPadding(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send, "Send",
-                    tint = if (input.trim().isNotBlank()) MaterialTheme.colorScheme.onPrimary
-                           else VynTextSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
+                // Camera button (Instagram style)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        .clip(CircleShape)
+                        .clickable { /* Media picker */ },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.CameraAlt, "Camera", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                // Text input
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = input,
+                            onValueChange = { if (it.length <= 1000) input = it },
+                            placeholder = { Text("Message...", fontSize = 14.sp, color = VynTextSecondary) },
+                            shape = RoundedCornerShape(22.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
+                            ),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface),
+                            modifier = Modifier.weight(1f),
+                            singleLine = false,
+                            maxLines = 4
+                        )
+                        if (input.trim().isBlank()) {
+                            IconButton(
+                                onClick = { scope.launch { viewModel.sendText("❤️") } },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.Favorite, "Send Heart", tint = Color(0xFFFF3040), modifier = Modifier.size(22.dp))
+                            }
+                        }
+                    }
+                }
+                // Send button
+                if (input.trim().isNotBlank()) {
+                    Text(
+                        text = "Send",
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable(enabled = !sending) {
+                                viewModel.sendText(input.trim())
+                                input = ""
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
     }
 }
 
-/** A single VYN NUMBER message bubble. */
+/** A single VYN NUMBER message bubble — Instagram DM style (responsive). */
 @Composable
-private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String) {
+private fun VynNumberMessageBubble(msg: VynNumberMessage, myIdentityId: String, maxBubbleWidth: Dp = 300.dp) {
     val isMine = msg.senderIdentityId == myIdentityId
     val align = if (isMine) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (isMine) MaterialTheme.colorScheme.primary
-                      else MaterialTheme.colorScheme.surfaceVariant
-    val textColor = if (isMine) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurface
+    val bubbleColor = if (isMine) {
+        Brush.linearGradient(listOf(Color(0xFF833AB4), Color(0xFFE1306C), Color(0xFFFF6938)))
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val textColor = if (isMine) Color.White else MaterialTheme.colorScheme.onSurface
 
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), contentAlignment = align) {
+    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = align) {
         Column(
             horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
-            modifier = Modifier.widthIn(max = 280.dp)
+            modifier = Modifier.widthIn(max = maxBubbleWidth)
         ) {
             Surface(
                 shape = RoundedCornerShape(
-                    topStart = 14.dp, topEnd = 14.dp,
-                    bottomStart = if (isMine) 14.dp else 4.dp,
-                    bottomEnd = if (isMine) 4.dp else 14.dp
+                    topStart = 18.dp, topEnd = 18.dp,
+                    bottomStart = if (isMine) 18.dp else 4.dp,
+                    bottomEnd = if (isMine) 4.dp else 18.dp
                 ),
-                color = bubbleColor
+                color = if (isMine) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant,
+                modifier = if (isMine) Modifier.background(
+                    bubbleColor,
+                    RoundedCornerShape(
+                        topStart = 18.dp, topEnd = 18.dp,
+                        bottomStart = 18.dp, bottomEnd = 4.dp
+                    )
+                ) else Modifier
             ) {
                 Text(
-                    text = msg.text, fontSize = 14.sp, color = textColor,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    text = msg.text, fontSize = 15.sp, color = textColor,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
                 )
             }
-            Text(
-                text = formatVwTime(msg.createdAtMs), fontSize = 10.sp,
-                color = VynTextSecondary, modifier = Modifier.padding(top = 2.dp)
-            )
         }
     }
 }
