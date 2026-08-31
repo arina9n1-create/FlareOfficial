@@ -722,6 +722,14 @@ else {
             }
         }
 
+        // Follow graph sync: refresh my followers/following whenever login identity changes.
+        viewModelScope.launch {
+            profile.map { it.uid }.distinctUntilChanged().collectLatest { myUid ->
+                if (myUid.isBlank()) return@collectLatest
+                repository.refreshFollowState(myUid)
+            }
+        }
+
         // Real WebRTC call signalling: react to incoming OFFERING signals and to ICE state changes.
         webRtcCallManager.setConnectionStateListener { state ->
             val current = _activeCallState.value
@@ -1339,17 +1347,9 @@ else {
                 val user = repository.allUsers.first().find { it.handle.equals(handle, ignoreCase = true) }
                     ?: repository.searchUsersRemote(handle).firstOrNull()
                 if (user != null) {
-                    val friend = FriendEntity(
-                        id = user.uid,
-                        name = user.name,
-                        handle = user.handle,
-                        avatarType = user.avatarType,
-                        coverImageRes = user.coverType,
-                        avatarPath = user.avatarPath,
-                        coverPath = user.coverPath,
-                        bio = user.bio,
-                        location = user.location
-                    )
+                    // Persist the friend row (with live follow flags) so the profile
+                    // sheet's Follow / Follow Back button actually works.
+                    val friend = repository.ensureFriendFromUser(user)
                     _selectedFriendDetail.value = friend
                 }
             } catch (e: Exception) {
@@ -1403,6 +1403,51 @@ else {
     fun toggleFollow(friendId: String) {
         viewModelScope.launch {
             repository.toggleFollow(friendId, profile.value)
+        }
+    }
+
+    // ---- Follow system: search-follow, follow-back, state ----
+
+    val followState get() = repository.followState
+
+    // Handles I currently follow (reactive; used by the notification Follow Back buttons).
+    val followingHandles: StateFlow<Set<String>> = repository.friends
+        .map { list -> list.filter { it.isFollowing }.map { it.handle.lowercase() }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    fun refreshFollowState() {
+        viewModelScope.launch {
+            repository.refreshFollowState(profile.value.uid)
+        }
+    }
+
+    /** Follow a user found via search — creates the local friend row first if needed. */
+    fun followUserFromSearch(user: AppUserEntity) {
+        if (user.uid.isBlank() || user.uid == profile.value.uid) return
+        viewModelScope.launch {
+            try {
+                val friend = repository.ensureFriendFromUser(user)
+                if (!friend.isFollowing) {
+                    repository.toggleFollow(friend.id, profile.value)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "followUserFromSearch failed", e)
+            }
+        }
+    }
+
+    /** Follow back a user who followed me (from a notification). Makes us Friends 🤝. */
+    fun followBackFromNotification(handle: String) {
+        if (handle.equals(profile.value.handle, ignoreCase = true)) return
+        viewModelScope.launch {
+            try {
+                val friend = repository.ensureFriendByHandle(handle) ?: return@launch
+                if (!friend.isFollowing) {
+                    repository.toggleFollow(friend.id, profile.value)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "followBackFromNotification failed", e)
+            }
         }
     }
 

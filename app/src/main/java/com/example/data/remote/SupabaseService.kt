@@ -984,6 +984,42 @@ class SupabaseService(private val context: Context) {
         } catch (e: Exception) { Log.e(TAG, "Supabase request failed", e) }
     }
 
+    // Follow graph state: (uids that follow me, uids I follow). Only active follows returned.
+    suspend fun fetchFollowState(myUid: String): Pair<Set<String>, Set<String>> = withContext(Dispatchers.IO) {
+        var followers: MutableSet<String> = mutableSetOf()
+        var following: MutableSet<String> = mutableSetOf()
+        try {
+            val url = "${Backend.URL}/rest/v1/follows?following_uid=eq.$myUid&is_following=eq.true&select=follower_uid"
+            val body = executeChecked(Request.Builder().url(url).headers(getBaseHeaders()).get().build())
+            val arr = JSONArray(body)
+            for (i in 0 until arr.length()) {
+                arr.getJSONObject(i).optString("follower_uid").takeIf { it.isNotBlank() }?.let { followers.add(it) }
+            }
+        } catch (e: Exception) { Log.e(TAG, "fetchFollowers failed", e) }
+        try {
+            val url = "${Backend.URL}/rest/v1/follows?follower_uid=eq.$myUid&is_following=eq.true&select=following_uid"
+            val body = executeChecked(Request.Builder().url(url).headers(getBaseHeaders()).get().build())
+            val arr = JSONArray(body)
+            for (i in 0 until arr.length()) {
+                arr.getJSONObject(i).optString("following_uid").takeIf { it.isNotBlank() }?.let { following.add(it) }
+            }
+        } catch (e: Exception) { Log.e(TAG, "fetchFollowing failed", e) }
+        followers to following
+    }
+
+    // Server-side notification to the followed user (uses vn_follow_notify SECURITY DEFINER RPC,
+    // because notifications RLS blocks direct cross-recipient inserts from the client).
+    suspend fun sendFollowNotification(targetHandle: String, actionText: String) = withContext(Dispatchers.IO) {
+        try {
+            val url = "${Backend.URL}/rest/v1/rpc/vn_follow_notify"
+            val payload = JSONObject().apply {
+                put("p_target_handle", targetHandle)
+                put("p_action", actionText)
+            }
+            executeChecked(Request.Builder().url(url).headers(getBaseHeaders()).post(payload.toString().toRequestBody(JSON_MEDIA_TYPE)).build())
+        } catch (e: Exception) { Log.e(TAG, "sendFollowNotification failed", e) }
+    }
+
     suspend fun createStory(story: StoryEntity): Result<StoryEntity> = withContext(Dispatchers.IO) {
         try {
             val url = "${Backend.URL}/rest/v1/stories"

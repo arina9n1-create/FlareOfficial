@@ -6,6 +6,9 @@ import com.example.data.remote.SupabaseService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -32,6 +35,63 @@ class SocialRepository(
 
     fun getUserPosts(handle: String): Flow<List<PostEntity>> = dao.getUserPosts(handle)
     fun getComments(postId: Long): Flow<List<CommentEntity>> = dao.getCommentsForPost(postId)
+
+    // ---- Follow graph state (uid -> follower/following sets, synced from the `follows` table) ----
+    data class FollowGraph(val followers: Set<String> = emptySet(), val following: Set<String> = emptySet())
+
+    private val _followState = MutableStateFlow(FollowGraph())
+    val followState: StateFlow<FollowGraph> = _followState.asStateFlow()
+
+    suspend fun refreshFollowState(myUid: String) {
+        if (myUid.isBlank()) return
+        try {
+            val (followers, following) = supabaseService.fetchFollowState(myUid)
+            _followState.value = FollowGraph(followers = followers, following = following)
+
+            // Reconcile cached friend rows so profile sheets / lists show correct flags.
+            friends.first().forEach { f ->
+                val amFollowing = following.contains(f.id)
+                val followsMe = followers.contains(f.id)
+                if (amFollowing != f.isFollowing || followsMe != f.isFollower) {
+                    dao.updateFollowStatus(id = f.id, isFollowing = amFollowing, isFriend = amFollowing && followsMe)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SocialRepository", "refreshFollowState failed", e)
+        }
+    }
+
+    /** Returns the local friend row for a searched/known user, creating it on first contact. */
+    suspend fun ensureFriendFromUser(user: AppUserEntity): FriendEntity {
+        dao.getFriendById(user.uid)?.let { return it }
+        val graph = _followState.value
+        val friend = FriendEntity(
+            id = user.uid,
+            name = user.name,
+            handle = user.handle,
+            avatarType = user.avatarType,
+            coverImageRes = user.coverType,
+            avatarPath = user.avatarPath,
+            coverPath = user.coverPath,
+            bio = user.bio,
+            location = user.location,
+            isFollowing = graph.following.contains(user.uid),
+            isFollower = graph.followers.contains(user.uid),
+            isFriend = graph.following.contains(user.uid) && graph.followers.contains(user.uid),
+            isOnline = false
+        )
+        dao.insertFriend(friend)
+        return friend
+    }
+
+    /** Resolves a handle to a friend row (local cache -> remote search), creating it if needed. */
+    suspend fun ensureFriendByHandle(handle: String): FriendEntity? {
+        friends.first().find { it.handle.equals(handle, ignoreCase = true) }?.let { return it }
+        val user = allUsers.first().find { it.handle.equals(handle, ignoreCase = true) }
+            ?: runCatching { searchUsersRemote(handle).firstOrNull() }.getOrNull()
+            ?: return null
+        return ensureFriendFromUser(user)
+    }
 
     suspend fun initDefaultDataIfNeeded() {
         // No local seed data. All content is loaded from Supabase (the source of truth).
@@ -883,6 +943,11 @@ class SocialRepository(
             isFriend = newIsFriend
         )
 
+        // Keep the cached follow graph in sync for instant UI feedback.
+        val graph = _followState.value
+        _followState.value = if (newFollowing) graph.copy(following = graph.following + friendId)
+                             else graph.copy(following = graph.following - friendId)
+
         if (newIsFriend) {
             addNotification(
                 username = existing.handle,
@@ -894,6 +959,16 @@ class SocialRepository(
                 username = existing.handle,
                 avatarType = existing.avatarType,
                 actionText = "is now in your following list ✨"
+            )
+        }
+
+        // Notify the followed user on the server so THEY receive a notification
+        // ("X started following you — Follow back!"). Only on a fresh follow.
+        if (newFollowing) {
+            supabaseService.sendFollowNotification(
+                targetHandle = existing.handle,
+                actionText = if (newIsFriend) "followed you back — you are now Friends 🤝🎉"
+                             else "started following you — Follow back! 🤝"
             )
         }
 

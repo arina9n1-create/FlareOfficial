@@ -43,6 +43,7 @@ fun ExploreScreen(
     val searchError by viewModel.userSearchError.collectAsState()
     val posts by viewModel.posts.collectAsState()
     val connections by viewModel.allConnections.collectAsState()
+    val followGraph by viewModel.followState.collectAsState()
     var selectedPhoto by remember { mutableStateOf<PostEntity?>(null) }
 
     // Real trending hashtags derived from the local feed (posts), most frequent first.
@@ -67,7 +68,7 @@ fun ExploreScreen(
             .fillMaxSize()
             .statusBarsPadding()
             .testTag("explore_screen_list"),
-        contentPadding = PaddingValues(bottom = 90.dp, top = 12.dp)
+        contentPadding = PaddingValues(bottom = 90.dp, top = 20.dp)
     ) {
         // Search Bar
         item {
@@ -245,27 +246,56 @@ fun ExploreScreen(
                 }
             } else {
                 items(searchResults, key = { it.uid }) { user ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.openDirectChatWithUser(user) }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        VynAvatar(avatarType = user.avatarType, storagePath = user.avatarPath, size = 46.dp)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(user.name, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("@${user.handle}", fontSize = 12.sp, color = VynTextSecondary)
-                            if (user.bio.isNotBlank()) {
-                                Text(user.bio, fontSize = 12.sp, color = VynTextSecondary, maxLines = 1)
-                            }
-                        }
-                        TextButton(onClick = { viewModel.openDirectChatWithUser(user) }) {
-                            Text("Chat")
+                val isSelf = user.handle.equals(viewModel.profile.value.handle, ignoreCase = true)
+                val localFriend = connections.find { it.id == user.uid || it.handle.equals(user.handle, ignoreCase = true) }
+                val amFollowing = followGraph.following.contains(user.uid) || localFriend?.isFollowing == true
+                val followsMe = followGraph.followers.contains(user.uid) || localFriend?.isFollower == true
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.openDirectChatWithUser(user) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    VynAvatar(avatarType = user.avatarType, storagePath = user.avatarPath, size = 46.dp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(user.name, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (followsMe && !amFollowing) "@${user.handle} · Follows you" else "@${user.handle}",
+                            fontSize = 12.sp,
+                            color = if (followsMe && !amFollowing) Color(0xFFE67E22) else VynTextSecondary
+                        )
+                        if (user.bio.isNotBlank() && !followsMe) {
+                            Text(user.bio, fontSize = 12.sp, color = VynTextSecondary, maxLines = 1)
                         }
                     }
+                    if (!isSelf) {
+                        Button(
+                            onClick = { viewModel.followUserFromSearch(user) },
+                            enabled = !amFollowing,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (followsMe && !amFollowing) Color(0xFF6C5CE7) else MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                disabledContentColor = VynTextSecondary
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Text(
+                                text = if (amFollowing) "Following ✓" else if (followsMe) "Follow Back 🤝" else "Follow +",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    TextButton(onClick = { viewModel.openDirectChatWithUser(user) }) {
+                        Text("Chat")
+                    }
                 }
+            }
             }
             item {
                 Text(

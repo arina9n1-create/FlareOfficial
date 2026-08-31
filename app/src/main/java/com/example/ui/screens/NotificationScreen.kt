@@ -50,6 +50,7 @@ fun NotificationScreen(
 
     val context = LocalContext.current
     val notifications by viewModel.notifications.collectAsState()
+    val followingHandles by viewModel.followingHandles.collectAsState()
     var selectedFilter by remember { mutableStateOf("All") }
     var searchQuery by remember { mutableStateOf("") }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
@@ -288,6 +289,8 @@ fun NotificationScreen(
                         items(recentNotifications, key = { it.id }) { notif ->
                             NotificationCardItem(
                                 notification = notif,
+                                isFollowingBack = followingHandles.contains(notif.username.lowercase().trimStart('@')),
+                                onFollowBack = { viewModel.followBackFromNotification(notif.username) },
                                 onItemClick = {
                                     if (!notif.isRead) viewModel.markNotificationRead(notif.id)
                                 },
@@ -312,6 +315,8 @@ fun NotificationScreen(
                         items(earlierNotifications, key = { it.id }) { notif ->
                             NotificationCardItem(
                                 notification = notif,
+                                isFollowingBack = followingHandles.contains(notif.username.lowercase().trimStart('@')),
+                                onFollowBack = { viewModel.followBackFromNotification(notif.username) },
                                 onItemClick = {
                                     if (!notif.isRead) viewModel.markNotificationRead(notif.id)
                                 },
@@ -404,6 +409,8 @@ private fun FilterPill(
 @Composable
 private fun NotificationCardItem(
     notification: NotificationEntity,
+    isFollowingBack: Boolean = true,
+    onFollowBack: () -> Unit = {},
     onItemClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -411,6 +418,12 @@ private fun NotificationCardItem(
     val isCredit = notification.actionText.contains("credit", ignoreCase = true) || notification.actionText.contains("earned", ignoreCase = true) || notification.actionText.contains("reward", ignoreCase = true) || notification.actionText.contains("payout", ignoreCase = true)
     val isComment = notification.actionText.contains("comment", ignoreCase = true) || notification.actionText.contains("replied", ignoreCase = true)
     val isFollow = notification.actionText.contains("following", ignoreCase = true) || notification.actionText.contains("followed", ignoreCase = true)
+    // "X started following you — Follow back! 🤝" → show Follow Back button.
+    // Self-log entries ("followed you back…", "in your following list") are excluded.
+    val isFollowBackCandidate = isFollow &&
+            notification.actionText.contains("you", ignoreCase = true) &&
+            !notification.actionText.contains("back", ignoreCase = true) &&
+            !notification.actionText.contains("your", ignoreCase = true)
 
     val badgeIcon = when {
         isLike -> Icons.Default.Favorite
@@ -523,6 +536,29 @@ private fun NotificationCardItem(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // Follow Back action — one tap turns the follower into a Friend 🤝
+                if (isFollowBackCandidate) {
+                    Button(
+                        onClick = onFollowBack,
+                        enabled = !isFollowingBack,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF6C5CE7),
+                            contentColor = Color.White,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            disabledContentColor = VynTextSecondary
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isFollowingBack) "Friends 🤝" else "Follow Back 🤝",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
