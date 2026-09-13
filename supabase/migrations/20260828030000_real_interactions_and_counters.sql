@@ -1,4 +1,4 @@
--- VYN9 Master Persistence Migration
+-- FLAREOFFICIAL Master Persistence Migration
 -- 1. Create Post & Reel Likes Tables (True multi-user tracking)
 CREATE TABLE IF NOT EXISTS public.post_likes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

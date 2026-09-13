@@ -32,7 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.NotificationEntity
-import com.example.ui.components.VynAvatar
+import com.example.ui.components.FlareAvatar
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.SocialViewModel
 
@@ -149,7 +149,7 @@ fun NotificationScreen(
                             Icon(
                                 imageVector = Icons.Outlined.DeleteSweep,
                                 contentDescription = "Clear All",
-                                tint = VynTextSecondary
+                                tint = FlareTextSecondary
                             )
                         }
                     }
@@ -253,7 +253,7 @@ fun NotificationScreen(
                             else
                                 "When people like your posts, send messages, or you earn reward credits, they will appear here.",
                             fontSize = 13.sp,
-                            color = VynTextSecondary,
+                            color = FlareTextSecondary,
                             textAlign = TextAlign.Center,
                             lineHeight = 19.sp
                         )
@@ -282,7 +282,7 @@ fun NotificationScreen(
                                 text = "New & Today",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
-                                color = VynTextSecondary,
+                                color = FlareTextSecondary,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
                         }
@@ -308,7 +308,7 @@ fun NotificationScreen(
                                 text = "Earlier",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
-                                color = VynTextSecondary,
+                                color = FlareTextSecondary,
                                 modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                             )
                         }
@@ -467,7 +467,7 @@ private fun NotificationCardItem(
         ) {
             // Avatar with Status Badge
             Box(modifier = Modifier.size(46.dp)) {
-                VynAvatar(
+                FlareAvatar(
                     avatarType = notification.avatarType,
                     size = 44.dp
                 )
@@ -510,7 +510,7 @@ private fun NotificationCardItem(
                     Text(
                         text = notification.timeAgo,
                         fontSize = 11.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
                     )
                 }
 
@@ -549,7 +549,7 @@ private fun NotificationCardItem(
                             containerColor = Color(0xFF6C5CE7),
                             contentColor = Color.White,
                             disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            disabledContentColor = VynTextSecondary
+                            disabledContentColor = FlareTextSecondary
                         ),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
@@ -584,7 +584,7 @@ private fun NotificationCardItem(
                     Icon(
                         imageVector = Icons.Outlined.Close,
                         contentDescription = "Dismiss",
-                        tint = VynTextSecondary.copy(alpha = 0.6f),
+                        tint = FlareTextSecondary.copy(alpha = 0.6f),
                         modifier = Modifier.size(16.dp)
                     )
                 }

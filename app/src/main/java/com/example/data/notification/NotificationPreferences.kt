@@ -7,7 +7,7 @@ import android.content.SharedPreferences
  * Centralized preferences for notification settings, FCM token storage, and muted states.
  */
 object NotificationPreferences {
-    private const val PREFS_NAME = "vyn9_notification_prefs"
+    private const val PREFS_NAME = "flareofficial_notification_prefs"
 
     private const val KEY_PAUSE_ALL = "pause_all_notifications"
     private const val KEY_LIKES_REACTIONS = "notify_likes_reactions"

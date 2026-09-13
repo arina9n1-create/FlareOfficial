@@ -9,8 +9,8 @@
     <!-- Never back up auth sessions/tokens or financial (earnings/withdrawal)
          data. Restoring these onto another device would leak credentials or
          duplicate money state. -->
-    <exclude domain="sharedpref" path="vyn9_auth_prefs.xml"/>
-    <exclude domain="sharedpref" path="vyn9_monetization_prefs.xml"/>
-    <exclude domain="sharedpref" path="vyn9_rewards_prefs.xml"/>
-    <exclude domain="sharedpref" path="vyn9_ad_attribution_prefs.xml"/>
+    <exclude domain="sharedpref" path="flareofficial_auth_prefs.xml"/>
+    <exclude domain="sharedpref" path="flareofficial_monetization_prefs.xml"/>
+    <exclude domain="sharedpref" path="flareofficial_rewards_prefs.xml"/>
+    <exclude domain="sharedpref" path="flareofficial_ad_attribution_prefs.xml"/>
 </full-backup-content>

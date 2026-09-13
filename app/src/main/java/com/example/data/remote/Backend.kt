@@ -11,6 +11,6 @@ object Backend {
     val KEY: String = BuildConfig.SUPABASE_KEY.takeIf { it.isNotBlank() && !it.contains("placeholder", ignoreCase = true) }
         ?: ""
 
-    // Centralized configuration for Vyn9 public web base URL
-    const val BASE_WEB_URL = "https://vyn9.app"
+    // Centralized configuration for FlareOfficial public web base URL
+    const val BASE_WEB_URL = "https://flareofficial.app"
 }

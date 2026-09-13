@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
 
 /**
  * -------------------------------------------------------------
- * INSTAGRAM CHAT DETAILS & SETTINGS BOTTOM SHEET
+ * FLAREOFFICIAL CHAT DETAILS & SETTINGS BOTTOM SHEET
  * -------------------------------------------------------------
  * Accessible via the "i" (info) button on the chat top bar.
  * Features:
@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InstagramChatDetailsSheet(
+fun FlareOfficialChatDetailsSheet(
     room: LiveChatRoom,
     viewModel: SocialViewModel,
     onDismiss: () -> Unit,
@@ -95,12 +95,12 @@ fun InstagramChatDetailsSheet(
                             .clip(CircleShape)
                             .border(
                                 2.5.dp,
-                                Brush.linearGradient(listOf(InstagramDeepPurple, InstagramPink, InstagramYellow)),
+                                Brush.linearGradient(listOf(FlareOfficialDeepPurple, FlareOfficialPink, FlareOfficialYellow)),
                                 CircleShape
                             )
                             .padding(4.dp)
                     ) {
-                        VynAvatar(avatarType = room.avatarType, size = 84.dp)
+                        FlareAvatar(avatarType = room.avatarType, size = 84.dp)
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -119,16 +119,16 @@ fun InstagramChatDetailsSheet(
                             Icon(
                                 imageVector = Icons.Default.Verified,
                                 contentDescription = "Verified",
-                                tint = InstagramBlue,
+                                tint = FlareOfficialBlue,
                                 modifier = Modifier.size(17.dp)
                             )
                         }
                     }
 
                     Text(
-                        text = if (room.type == "GLOBAL") "Public Lounge · Community" else "@${room.title.lowercase().replace(" ", "_")} · Instagram",
+                        text = if (room.type == "GLOBAL") "Public Lounge · Community" else "@${room.title.lowercase().replace(" ", "_")} · FlareOfficial",
                         fontSize = 13.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -201,7 +201,7 @@ fun InstagramChatDetailsSheet(
                     ),
                     border = BorderStroke(
                         1.5.dp,
-                        if (isAnyTranslationOn) Brush.linearGradient(listOf(InstagramPurple, InstagramPink, InstagramYellow))
+                        if (isAnyTranslationOn) Brush.linearGradient(listOf(FlareOfficialPurple, FlareOfficialPink, FlareOfficialYellow))
                         else Brush.linearGradient(listOf(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)))
                     ),
                     modifier = Modifier
@@ -227,7 +227,7 @@ fun InstagramChatDetailsSheet(
                                     modifier = Modifier
                                         .size(38.dp)
                                         .background(
-                                            if (isAnyTranslationOn) Brush.linearGradient(listOf(InstagramPurple, InstagramPink))
+                                            if (isAnyTranslationOn) Brush.linearGradient(listOf(FlareOfficialPurple, FlareOfficialPink))
                                             else Brush.linearGradient(listOf(Color.Gray, Color.DarkGray)),
                                             CircleShape
                                         ),
@@ -251,7 +251,7 @@ fun InstagramChatDetailsSheet(
                                         text = "শুধুমাত্র ${room.title} এর সাথে চ্যাটে প্রযোজ্য",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = if (isAnyTranslationOn) InstagramPink else VynTextSecondary
+                                        color = if (isAnyTranslationOn) FlareOfficialPink else FlareTextSecondary
                                     )
                                 }
                             }
@@ -259,7 +259,7 @@ fun InstagramChatDetailsSheet(
                             // Quick Reset to Default (OFF) / Toggle All
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isAnyTranslationOn) InstagramPink.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                color = if (isAnyTranslationOn) FlareOfficialPink.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
                                 modifier = Modifier.clickable {
                                     val nextVal = !isAnyTranslationOn
                                     viewModel.toggleRoomTranslation(room.id, nextVal)
@@ -274,7 +274,7 @@ fun InstagramChatDetailsSheet(
                                     text = if (isAnyTranslationOn) "Reset Default" else "Default: OFF",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isAnyTranslationOn) InstagramPink else VynTextSecondary,
+                                    color = if (isAnyTranslationOn) FlareOfficialPink else FlareTextSecondary,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
@@ -283,7 +283,7 @@ fun InstagramChatDetailsSheet(
                         Text(
                             text = "🔒 এই সেটিংসটি শুধুমাত্র এই চ্যাটের জন্যই কাজ করবে। অন্য কোনো চ্যাটে কোনো অনুবাদ হবে না এবং ডিফল্ট টেক্সট থাকবে।",
                             fontSize = 11.5.sp,
-                            color = VynTextSecondary,
+                            color = FlareTextSecondary,
                             lineHeight = 16.sp
                         )
 
@@ -319,7 +319,7 @@ fun InstagramChatDetailsSheet(
                                     Text(
                                         text = "আপনি বাংলা বা বাংলিশে লিখলে এনার কাছে ইংরেজিতে মেসেজ যাবে।",
                                         fontSize = 11.5.sp,
-                                        color = VynTextSecondary,
+                                        color = FlareTextSecondary,
                                         lineHeight = 15.sp
                                     )
                                 }
@@ -357,7 +357,7 @@ fun InstagramChatDetailsSheet(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Icon(Icons.Default.SouthWest, contentDescription = null, tint = InstagramBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.SouthWest, contentDescription = null, tint = FlareOfficialBlue, modifier = Modifier.size(16.dp))
                                         Text(
                                             text = "অন্যের মেসেজ ➔ বাংলা অনুবাদ",
                                             fontSize = 13.5.sp,
@@ -369,7 +369,7 @@ fun InstagramChatDetailsSheet(
                                     Text(
                                         text = "এই ব্যক্তি ইংরেজিতে মেসেজ দিলে আপনি বাংলায় দেখতে পাবেন।",
                                         fontSize = 11.5.sp,
-                                        color = VynTextSecondary,
+                                        color = FlareTextSecondary,
                                         lineHeight = 15.sp
                                     )
                                 }
@@ -398,7 +398,7 @@ fun InstagramChatDetailsSheet(
                                     .padding(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text("🧪 লাইভ টেস্ট করুন (Type Bangla/Banglish):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = InstagramPurple)
+                                Text("🧪 লাইভ টেস্ট করুন (Type Bangla/Banglish):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = FlareOfficialPurple)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -425,7 +425,7 @@ fun InstagramChatDetailsSheet(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text("➔ ইংরেজি ফলাফল:", fontSize = 11.sp, color = VynTextSecondary)
+                                    Text("➔ ইংরেজি ফলাফল:", fontSize = 11.sp, color = FlareTextSecondary)
                                     Text(
                                         text = if (isTestingTranslation) "Translating..." else testTranslatedText,
                                         fontSize = 12.sp,
@@ -450,13 +450,13 @@ fun InstagramChatDetailsSheet(
                         ) {
                             Column {
                                 Text("Theme / Gradient", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Select gradient for your message bubbles", fontSize = 12.sp, color = VynTextSecondary)
+                                Text("Select gradient for your message bubbles", fontSize = 12.sp, color = FlareTextSecondary)
                             }
                             Text(
                                 text = chatTheme,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = InstagramPink
+                                color = FlareOfficialPink
                             )
                         }
 
@@ -466,7 +466,7 @@ fun InstagramChatDetailsSheet(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             listOf(
-                                "Classic Instagram" to listOf(InstagramPurple, InstagramPink),
+                                "Classic FlareOfficial" to listOf(FlareOfficialPurple, FlareOfficialPink),
                                 "Cyber Glow" to listOf(Color(0xFF6C5CE7), Color(0xFF00CEC9)),
                                 "Sunset Peach" to listOf(Color(0xFFFF7675), Color(0xFFFAB1A0)),
                                 "Emerald Mint" to listOf(Color(0xFF00B894), Color(0xFF55EFC4))
@@ -506,7 +506,7 @@ fun InstagramChatDetailsSheet(
                         ) {
                             Column {
                                 Text("Quick Reaction Emoji", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Double tap reaction for messages", fontSize = 12.sp, color = VynTextSecondary)
+                                Text("Double tap reaction for messages", fontSize = 12.sp, color = FlareTextSecondary)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 listOf("❤️", "🔥", "😂", "👏").forEach { emoji ->
@@ -547,7 +547,7 @@ fun InstagramChatDetailsSheet(
                                 Icon(Icons.Outlined.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Column {
                                     Text("Disappearing Messages", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("New messages disappear after chosen time", fontSize = 12.sp, color = VynTextSecondary)
+                                    Text("New messages disappear after chosen time", fontSize = 12.sp, color = FlareTextSecondary)
                                 }
                             }
                             TextButton(onClick = {
@@ -559,7 +559,7 @@ fun InstagramChatDetailsSheet(
                                 viewModel.setDisappearingDuration(next)
                                 Toast.makeText(context, "Disappearing messages: $next", Toast.LENGTH_SHORT).show()
                             }) {
-                                Text(disappearingDuration, fontWeight = FontWeight.Bold, color = InstagramBlue)
+                                Text(disappearingDuration, fontWeight = FontWeight.Bold, color = FlareOfficialBlue)
                             }
                         }
 
@@ -573,7 +573,7 @@ fun InstagramChatDetailsSheet(
                             Icon(Icons.Outlined.Security, contentDescription = null, tint = Color(0xFF00E676))
                             Column {
                                 Text("End-to-End Encrypted", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Messages and calls are secured with 256-bit AES encryption.", fontSize = 12.sp, color = VynTextSecondary)
+                                Text("Messages and calls are secured with 256-bit AES encryption.", fontSize = 12.sp, color = FlareTextSecondary)
                             }
                         }
                     }
@@ -590,9 +590,9 @@ fun InstagramChatDetailsSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Photos & Videos", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text("See all", fontSize = 12.sp, color = InstagramBlue, modifier = Modifier.clickable {})
+                            Text("See all", fontSize = 12.sp, color = FlareOfficialBlue, modifier = Modifier.clickable {})
                         }
-                        Text("No shared media yet.", fontSize = 13.sp, color = VynTextSecondary)
+                        Text("No shared media yet.", fontSize = 13.sp, color = FlareTextSecondary)
                     }
                 }
             }
@@ -682,7 +682,7 @@ fun InstagramChatDetailsSheet(
         AlertDialog(
             onDismissRequest = { showBlockDialog = false },
             title = { Text("Block ${room.title}?") },
-            text = { Text("They won't be able to send you messages or find your profile on Vyn9.") },
+            text = { Text("They won't be able to send you messages or find your profile on FlareOfficial.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -727,7 +727,7 @@ private fun SectionCard(
                 text = title,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = VynTextSecondary,
+                color = FlareTextSecondary,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             content()

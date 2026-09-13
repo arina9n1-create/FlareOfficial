@@ -1,6 +1,7 @@
 package com.example.data.notification
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -10,103 +11,115 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.RingtoneManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.ui.screens.IncomingCallActivity
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Helper to initialize notification channels, format system push notifications,
- * and dispatch heads-up alerts with deep-link navigation actions.
- */
 object NotificationHelper {
 
-    const val CHANNEL_DIRECT_MESSAGES = "vyn9_channel_direct_messages"
-    const val CHANNEL_SOCIAL_ALERTS = "vyn9_channel_social_alerts"
-    const val CHANNEL_REWARDS_PAYOUTS = "vyn9_channel_rewards_payouts"
-    const val CHANNEL_ADMIN_ALERTS = "vyn9_channel_admin_alerts"
+    const val CHANNEL_MESSAGES = "messages"
+    const val CHANNEL_CALLS = "calls"
+
+    /**
+     * Dedicated channel for the SYSTEM-displayed incoming-call push (sent by
+     * Google Play Services while the app process is dead/swiped away). Unlike
+     * [CHANNEL_CALLS] — which stays silent because CallRingingService plays
+     * its own ringtone while the process is alive — this channel carries the
+     * default ringtone so a missed-process call actually rings.
+     */
+    const val CHANNEL_CALLS_PUSH = "calls_push"
 
     const val EXTRA_TARGET_SCREEN = "extra_target_screen"
     const val EXTRA_CHAT_HANDLE = "extra_chat_handle"
     const val EXTRA_CHAT_NAME = "extra_chat_name"
     const val EXTRA_CHAT_AVATAR = "extra_chat_avatar"
+    const val EXTRA_CALLER_HANDLE = "extra_caller_handle"
+    const val EXTRA_AGORA_CHANNEL = "extra_agora_channel"
+
+    const val EXTRA_CALL_ID = "extra_call_id"
+    const val EXTRA_CALLER_NAME = "extra_caller_name"
+    const val EXTRA_AGORA_TOKEN = "extra_agora_token"
+    const val EXTRA_CALL_TYPE = "extra_call_type"
 
     const val SCREEN_CHAT = "screen_chat"
     const val SCREEN_NOTIFICATIONS = "screen_notifications"
     const val SCREEN_REWARDS = "screen_rewards"
     const val SCREEN_ADMIN = "screen_admin"
+    const val SCREEN_INCOMING_CALL = "screen_incoming_call"
+    const val SCREEN_GENERAL = "screen_general"
 
     private val notificationIdGenerator = AtomicInteger(1000)
 
     /**
-     * Initializes all Material 3 Notification Channels on Android 8.0+ (API 26+)
+     * Guard used by every local notification path. Instead of silently dropping
+     * a notification when POST_NOTIFICATIONS permission is missing, it logs the
+     * specific reason so background push failures are diagnosable. Returns true
+     * only when a system notification may actually be shown.
      */
+    private fun canNotify(context: Context, tag: String): Boolean {
+        if (!hasNotificationPermission(context)) {
+            Log.w("NotificationHelper", "$tag dropped: POST_NOTIFICATIONS permission is not granted")
+            return false
+        }
+        return true
+    }
+
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            // 1. Direct Messages & Chats Channel (High priority, Sound, Vibration, Pop-up)
-            val chatChannel = NotificationChannel(
-                CHANNEL_DIRECT_MESSAGES,
-                "Direct Messages & Chats",
+            val msgChannel = NotificationChannel(
+                CHANNEL_MESSAGES,
+                "Messages",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Incoming chat messages from friends and connections"
+                description = "Chat and direct messages"
                 enableLights(true)
-                lightColor = Color.parseColor("#4A90E2")
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 200, 100, 200)
+                lightColor = Color.BLUE
                 setShowBadge(true)
             }
 
-            // 2. Social Interactions Channel (Likes, Comments, Followers)
-            val socialChannel = NotificationChannel(
-                CHANNEL_SOCIAL_ALERTS,
-                "Social Interactions",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Alerts for likes, comments, mentions, and new followers"
-                enableLights(true)
-                lightColor = Color.parseColor("#E91E63")
-                enableVibration(true)
-                setShowBadge(true)
-            }
-
-            // 3. Rewards & Cashouts Channel (High priority)
-            val rewardsChannel = NotificationChannel(
-                CHANNEL_REWARDS_PAYOUTS,
-                "Rewards & Cashout Payouts",
+            val callChannel = NotificationChannel(
+                CHANNEL_CALLS,
+                "Calls",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Cashout status updates (bKash/Nagad), earning milestones, and bonuses"
-                enableLights(true)
-                lightColor = Color.parseColor("#4CAF50")
-                enableVibration(true)
-                setShowBadge(true)
+                description = "Incoming voice and video calls"
+                setSound(null, null) 
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
             }
 
-            // 4. Admin & System Broadcasts Channel
-            val adminChannel = NotificationChannel(
-                CHANNEL_ADMIN_ALERTS,
-                "System & Admin Broadcasts",
+            val callPushChannel = NotificationChannel(
+                CHANNEL_CALLS_PUSH,
+                "Incoming Calls (app closed)",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Official announcements, moderation notices, and security updates"
-                enableLights(true)
-                lightColor = Color.parseColor("#6C5CE7")
+                description = "Rings when an incoming call arrives while the app is closed or in background"
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
                 enableVibration(true)
-                setShowBadge(true)
+                enableLights(true)
+                lightColor = Color.BLUE
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
             }
 
-            notificationManager.createNotificationChannels(listOf(chatChannel, socialChannel, rewardsChannel, adminChannel))
+            manager.createNotificationChannels(listOf(msgChannel, callChannel, callPushChannel))
         }
     }
 
-    /**
-     * Dispatches a Direct Message chat push notification.
-     */
     fun showChatNotification(
         context: Context,
         senderHandle: String,
@@ -114,10 +127,17 @@ object NotificationHelper {
         messageText: String,
         avatarType: String = "default"
     ) {
-        if (!NotificationPreferences.isDirectMessagesEnabled(context)) return
-        if (!hasNotificationPermission(context)) return
-
-        createNotificationChannels(context)
+        if (!canNotify(context, "showChatNotification")) {
+            Log.w("NotificationHelper", "showChatNotification blocked (from $senderHandle)")
+            return
+        }
+        // Respect the user's in-app "Direct Messages" / "Pause All" toggles
+        // (Settings → Notifications & Alerts). Previously these switches were
+        // never enforced anywhere.
+        if (!NotificationPreferences.isDirectMessagesEnabled(context)) {
+            Log.w("NotificationHelper", "showChatNotification dropped: Direct Messages notifications disabled in app settings")
+            return
+        }
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -128,200 +148,169 @@ object NotificationHelper {
         }
 
         val pendingIntent = PendingIntent.getActivity(
-            context,
-            senderHandle.hashCode(),
-            intent,
+            context, senderHandle.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val soundEnabled = NotificationPreferences.isSoundVibrationEnabled(context)
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_DIRECT_MESSAGES)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(senderName)
             .setContentText(messageText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
 
-        if (soundEnabled) {
-            builder.setSound(defaultSoundUri)
-            builder.setVibrate(longArrayOf(0, 200, 100, 200))
-        } else {
-            builder.setSilent(true)
-        }
-
         try {
-            val notificationManager = NotificationManagerCompat.from(context)
-            val notificationId = Math.abs(senderHandle.hashCode()) % 10000 + 100
-            notificationManager.notify(notificationId, builder.build())
+            NotificationManagerCompat.from(context).notify(Math.abs(senderHandle.hashCode()), builder.build())
         } catch (e: SecurityException) {
-            // Permission not granted
+            Log.w("NotificationHelper", "showChatNotification notify failed: ${e.message}")
         }
     }
 
-    /**
-     * Dispatches a Rewards or Cashout milestone push notification.
-     */
-    fun showRewardNotification(
-        context: Context,
-        title: String,
-        message: String,
-        isPositive: Boolean = true
-    ) {
-        if (!NotificationPreferences.isRewardAlertsEnabled(context)) return
-        if (!hasNotificationPermission(context)) return
-
-        createNotificationChannels(context)
-
+    fun showRewardNotification(context: Context, title: String, message: String, isPositive: Boolean = true) {
+        if (!canNotify(context, "showRewardNotification")) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_TARGET_SCREEN, SCREEN_REWARDS)
         }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationIdGenerator.incrementAndGet(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val soundEnabled = NotificationPreferences.isSoundVibrationEnabled(context)
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_REWARDS_PAYOUTS)
+        val pendingIntent = PendingIntent.getActivity(context, notificationIdGenerator.incrementAndGet(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-
-        if (soundEnabled) {
-            builder.setSound(defaultSoundUri)
-        } else {
-            builder.setSilent(true)
-        }
-
-        try {
-            val notificationManager = NotificationManagerCompat.from(context)
-            notificationManager.notify(notificationIdGenerator.incrementAndGet(), builder.build())
-        } catch (e: SecurityException) {
-            // Permission not granted
+        try { NotificationManagerCompat.from(context).notify(notificationIdGenerator.incrementAndGet(), builder.build()) } catch (e: SecurityException) {
+            Log.w("NotificationHelper", "showRewardNotification notify failed: ${e.message}")
         }
     }
 
-    /**
-     * Dispatches a Social Interaction push notification (Like, Comment, Follower).
-     */
-    fun showSocialNotification(
-        context: Context,
-        title: String,
-        message: String,
-        avatarType: String = "default"
-    ) {
-        if (NotificationPreferences.isPauseAll(context)) return
-        if (!hasNotificationPermission(context)) return
-
-        createNotificationChannels(context)
-
+    fun showSocialNotification(context: Context, title: String, message: String, avatarType: String = "default") {
+        if (!canNotify(context, "showSocialNotification")) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_TARGET_SCREEN, SCREEN_NOTIFICATIONS)
         }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationIdGenerator.incrementAndGet(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val soundEnabled = NotificationPreferences.isSoundVibrationEnabled(context)
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_SOCIAL_ALERTS)
+        val pendingIntent = PendingIntent.getActivity(context, notificationIdGenerator.incrementAndGet(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-
-        if (soundEnabled) {
-            builder.setSound(defaultSoundUri)
-        } else {
-            builder.setSilent(true)
-        }
-
-        try {
-            val notificationManager = NotificationManagerCompat.from(context)
-            notificationManager.notify(notificationIdGenerator.incrementAndGet(), builder.build())
-        } catch (e: SecurityException) {
-            // Permission not granted
+        try { NotificationManagerCompat.from(context).notify(notificationIdGenerator.incrementAndGet(), builder.build()) } catch (e: SecurityException) {
+            Log.w("NotificationHelper", "showSocialNotification notify failed: ${e.message}")
         }
     }
 
-    /**
-     * Dispatches an Official Admin Broadcast push notification.
-     */
-    fun showAdminNotification(
-        context: Context,
-        title: String,
-        message: String
-    ) {
-        if (!hasNotificationPermission(context)) return
-
-        createNotificationChannels(context)
-
+    fun showAdminNotification(context: Context, title: String, message: String) {
+        if (!canNotify(context, "showAdminNotification")) return
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_TARGET_SCREEN, SCREEN_NOTIFICATIONS)
         }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationIdGenerator.incrementAndGet(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_ADMIN_ALERTS)
+        val pendingIntent = PendingIntent.getActivity(context, notificationIdGenerator.incrementAndGet(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_SYSTEM)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-
-        try {
-            val notificationManager = NotificationManagerCompat.from(context)
-            notificationManager.notify(notificationIdGenerator.incrementAndGet(), builder.build())
-        } catch (e: SecurityException) {
-            // Permission not granted
+        try { NotificationManagerCompat.from(context).notify(notificationIdGenerator.incrementAndGet(), builder.build()) } catch (e: SecurityException) {
+            Log.w("NotificationHelper", "showAdminNotification notify failed: ${e.message}")
         }
     }
 
-    /**
-     * Checks whether POST_NOTIFICATIONS permission is granted on Android 13+ (API 33+)
-     */
+    fun showGeneralNotification(context: Context, title: String, message: String) {
+        if (!canNotify(context, "showGeneralNotification")) return
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_TARGET_SCREEN, SCREEN_NOTIFICATIONS)
+        }
+        val pendingIntent = PendingIntent.getActivity(context, notificationIdGenerator.incrementAndGet(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+        try { NotificationManagerCompat.from(context).notify(notificationIdGenerator.incrementAndGet(), builder.build()) } catch (e: SecurityException) {
+            Log.w("NotificationHelper", "showGeneralNotification notify failed: ${e.message}")
+        }
+    }
+
+    fun getIncomingCallNotification(
+        context: Context,
+        callerName: String,
+        callType: String,
+        callId: String,
+        agoraChannel: String,
+        callerHandle: String = ""
+    ): Notification {
+        val fullScreenIntent = Intent(context, IncomingCallActivity::class.java).apply {
+            putExtra(EXTRA_CALLER_NAME, callerName)
+            putExtra(EXTRA_CALL_TYPE, callType)
+            putExtra(EXTRA_CALL_ID, callId)
+            putExtra(EXTRA_AGORA_CHANNEL, agoraChannel)
+            putExtra(EXTRA_CALLER_HANDLE, callerHandle)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context, 0, fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Accept Action
+        val acceptIntent = Intent(context, MainActivity::class.java).apply {
+            putExtra(EXTRA_TARGET_SCREEN, SCREEN_INCOMING_CALL)
+            putExtra(EXTRA_CALL_ID, callId)
+            putExtra(EXTRA_AGORA_CHANNEL, agoraChannel)
+            putExtra(EXTRA_CALL_TYPE, callType)
+            putExtra(EXTRA_CALLER_NAME, callerName)
+            putExtra(EXTRA_CALLER_HANDLE, callerHandle)
+            action = "ACCEPT_CALL"
+        }
+        val acceptPendingIntent = PendingIntent.getActivity(
+            context, 1, acceptIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Decline Action
+        val declineIntent = Intent(context, CallRingingService::class.java).apply {
+            action = "DECLINE_CALL"
+            putExtra(EXTRA_CALL_ID, callId)
+        }
+        val declinePendingIntent = PendingIntent.getService(
+            context, 2, declineIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+
+        return NotificationCompat.Builder(context, CHANNEL_CALLS)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Incoming $callType Call")
+            .setContentText("$callerName is calling you")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setOngoing(true)
+            .setSound(ringtoneUri)
+            .setVibrate(longArrayOf(0, 500, 500, 500))
+            .addAction(R.drawable.ic_launcher_foreground, "Decline", declinePendingIntent)
+            .addAction(R.drawable.ic_launcher_foreground, "Accept", acceptPendingIntent)
+            .build()
+    }
+
     fun hasNotificationPermission(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else true
     }
 }

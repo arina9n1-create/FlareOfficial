@@ -44,8 +44,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.UserProfileEntity
-import com.example.ui.components.VynAvatar
-import com.example.ui.components.VynImage
+import com.example.ui.components.FlareAvatar
+import com.example.ui.components.FlareImage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.SettingsPage
 import com.example.ui.viewmodel.SocialViewModel
@@ -129,6 +129,18 @@ fun FullScreenSettings(
                     onBack = { viewModel.setSettingsPage(SettingsPage.MAIN) }
                 )
             }
+            SettingsPage.MY_WALLET -> {
+                MyWalletFullScreenPage(
+                    viewModel = viewModel,
+                    onBack = { viewModel.setSettingsPage(SettingsPage.MAIN) }
+                )
+            }
+            SettingsPage.VERIFICATION_BADGE -> {
+                VerificationBadgeFullScreenPage(
+                    viewModel = viewModel,
+                    onBack = { viewModel.setSettingsPage(SettingsPage.MAIN) }
+                )
+            }
         }
     }
 }
@@ -190,7 +202,7 @@ fun SettingsMainPage(
             // Profile Summary Header Card
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 shadowElevation = 1.dp,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -203,7 +215,7 @@ fun SettingsMainPage(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    VynAvatar(
+                    FlareAvatar(
                         avatarType = profile.avatarType,
                         storagePath = profile.avatarPath,
                         size = 56.dp
@@ -223,14 +235,14 @@ fun SettingsMainPage(
                             Icon(
                                 imageVector = Icons.Default.CheckCircle,
                                 contentDescription = "Verified",
-                                tint = VynCameraBlue,
+                                tint = FlareCameraBlue,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
                         Text(
                             text = profile.handle.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "Not signed in",
                             fontSize = 13.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(
@@ -238,19 +250,19 @@ fun SettingsMainPage(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Surface(
-                                color = VynCameraBlue.copy(alpha = 0.12f),
+                                color = FlareCameraBlue.copy(alpha = 0.12f),
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
                                     text = "Cloud Account",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = VynCameraBlue,
+                                    color = FlareCameraBlue,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                             Surface(
-                                color = VynGoldCoin.copy(alpha = 0.2f),
+                                color = FlareGoldCoin.copy(alpha = 0.2f),
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
@@ -267,7 +279,7 @@ fun SettingsMainPage(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                         contentDescription = "Edit Profile",
-                        tint = VynTextSecondary.copy(alpha = 0.5f),
+                        tint = FlareTextSecondary.copy(alpha = 0.5f),
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -275,6 +287,18 @@ fun SettingsMainPage(
 
             // Section 1: Monetization & Rewards
             SettingsSection(title = "Creator Monetization & Rewards") {
+                SettingsNavigationItem(
+                    icon = Icons.Outlined.AccountBalanceWallet,
+                    title = "My Wallet 💳",
+                    subtitle = "Add funds, withdraw earnings & view transaction history",
+                    onClick = { onNavigate(SettingsPage.MY_WALLET) }
+                )
+                SettingsNavigationItem(
+                    icon = Icons.Outlined.Verified,
+                    title = "Verification Badge ✔️",
+                    subtitle = "Activate your verification badge — fee paid directly from My Wallet",
+                    onClick = { onNavigate(SettingsPage.VERIFICATION_BADGE) }
+                )
                 SettingsNavigationItem(
                     icon = Icons.Outlined.Diamond,
                     title = "Monetization 💎",
@@ -354,7 +378,7 @@ fun SettingsMainPage(
                 )
                 SettingsNavigationItem(
                     icon = Icons.Outlined.Info,
-                    title = "About Vyn9 Social",
+                    title = "About FlareOfficial",
                     subtitle = "Version 1.3.0, developer info & check updates",
                     onClick = { onNavigate(SettingsPage.ABOUT_APP) }
                 )
@@ -381,7 +405,7 @@ fun SettingsMainPage(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Log Out of Vyn9",
+                    text = "Log Out of FlareOfficial",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
@@ -435,7 +459,7 @@ fun PersonalInfoFullScreenPage(
     var handle by remember(profile) { mutableStateOf(profile.handle) }
     var bio by remember(profile) { mutableStateOf(profile.bio) }
     var location by remember(profile) { mutableStateOf(profile.location) }
-    var website by remember { mutableStateOf("https://vyn9.social/@" + profile.handle) }
+    var website by remember { mutableStateOf("https://flareofficial.app/@" + profile.handle) }
     var selectedAvatar by remember(profile) { mutableStateOf(profile.avatarType) }
     var selectedCover by remember(profile) { mutableStateOf(profile.coverType) }
     var gender by remember { mutableStateOf("Male") }
@@ -485,7 +509,7 @@ fun PersonalInfoFullScreenPage(
                         if (isSaving) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = VynCameraBlue)
+                            Text("Save", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = FlareCameraBlue)
                         }
                     }
                 },
@@ -504,7 +528,7 @@ fun PersonalInfoFullScreenPage(
             // Profile & Cover Picture Selector
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -531,12 +555,12 @@ fun PersonalInfoFullScreenPage(
                                         .size(60.dp)
                                         .then(
                                             if (selectedAvatar == type) {
-                                                Modifier.border(3.dp, VynCameraBlue, CircleShape)
+                                                Modifier.border(3.dp, FlareCameraBlue, CircleShape)
                                             } else Modifier
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    VynAvatar(avatarType = type, size = 52.dp)
+                                    FlareAvatar(avatarType = type, size = 52.dp)
                                 }
                                 Text(label, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                             }
@@ -553,7 +577,7 @@ fun PersonalInfoFullScreenPage(
                         listOf("default" to "Default").forEach { (cov, lbl) ->
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (selectedCover == cov) VynCameraBlue.copy(alpha = 0.15f) else Color.Transparent,
+                                color = if (selectedCover == cov) FlareCameraBlue.copy(alpha = 0.15f) else Color.Transparent,
                                 border = if (selectedCover == cov) ButtonDefaults.outlinedButtonBorder(enabled = true) else null,
                                 modifier = Modifier
                                     .weight(1f)
@@ -568,7 +592,7 @@ fun PersonalInfoFullScreenPage(
                                     Icon(
                                         imageVector = if (selectedCover == cov) Icons.Default.CheckCircle else Icons.Outlined.Image,
                                         contentDescription = null,
-                                        tint = if (selectedCover == cov) VynCameraBlue else VynTextSecondary,
+                                        tint = if (selectedCover == cov) FlareCameraBlue else FlareTextSecondary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -636,7 +660,7 @@ fun PersonalInfoFullScreenPage(
             )
 
             // Gender Selector
-            Text("Gender", fontWeight = FontWeight.Medium, fontSize = 13.sp, color = VynTextSecondary)
+            Text("Gender", fontWeight = FontWeight.Medium, fontSize = 13.sp, color = FlareTextSecondary)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -678,7 +702,7 @@ fun PersonalInfoFullScreenPage(
                     .fillMaxWidth()
                     .height(50.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = VynCameraBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = FlareCameraBlue)
             ) {
                 Text("Save Profile Changes", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
@@ -758,7 +782,7 @@ fun PrivacySecurityFullScreenPage(
                 SettingsToggleItem(
                     icon = Icons.Outlined.Visibility,
                     title = "Show Active Status",
-                    subtitle = "Let friends see when you're online or recently active on Vyn9",
+                    subtitle = "Let friends see when you're online or recently active on FlareOfficial",
                     checked = showActiveStatus,
                     onCheckedChange = { showActiveStatus = it }
                 )
@@ -870,14 +894,14 @@ fun PrivacySecurityFullScreenPage(
                     Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .background(VynCameraBlue.copy(alpha = 0.15f), CircleShape),
+                            .background(FlareCameraBlue.copy(alpha = 0.15f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Outlined.PhoneAndroid, contentDescription = null, tint = VynCameraBlue)
+                        Icon(Icons.Outlined.PhoneAndroid, contentDescription = null, tint = FlareCameraBlue)
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Android Streaming Session (Current Device)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("No active session", fontSize = 11.sp, color = VynTextSecondary)
+                        Text("No active session", fontSize = 11.sp, color = FlareTextSecondary)
                     }
                     Surface(color = Color(0xFF4CAF50).copy(alpha = 0.2f), shape = RoundedCornerShape(6.dp)) {
                         Text("Online", fontSize = 11.sp, color = Color(0xFF2E7D32), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontWeight = FontWeight.Bold)
@@ -1015,16 +1039,20 @@ fun NotificationsFullScreenPage(
                         Text(
                             text = if (fcmToken != null) "FCM Cloud Engine Registered (${fcmToken.take(12)}...)" else "FCM Cloud Engine Ready",
                             fontSize = 11.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                 }
             }
 
+            // Push Delivery Diagnostic — live check of the whole chain
+            // (permission, channels, battery, local token, server token).
+            PushDiagnosticCard()
+
             // Master Pause All
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = if (pauseAll) Color(0xFFFFEBEE) else VynOffWhite,
+                color = if (pauseAll) Color(0xFFFFEBEE) else FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -1037,7 +1065,7 @@ fun NotificationsFullScreenPage(
                     Box(
                         modifier = Modifier
                             .size(42.dp)
-                            .background(if (pauseAll) MaterialTheme.colorScheme.error else VynButtonBg, CircleShape),
+                            .background(if (pauseAll) MaterialTheme.colorScheme.error else FlareButtonBg, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1055,7 +1083,7 @@ fun NotificationsFullScreenPage(
                         Text(
                             text = if (pauseAll) "All notifications are currently muted" else "Receive notifications normally",
                             fontSize = 12.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                     Switch(
@@ -1176,7 +1204,7 @@ fun NotificationsFullScreenPage(
                     .fillMaxWidth()
                     .height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = VynCameraBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = FlareCameraBlue)
             ) {
                 Text("Save Preferences", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
@@ -1226,7 +1254,7 @@ fun CloudSyncFullScreenPage(
             // Cloud Status Card
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -1240,14 +1268,14 @@ fun CloudSyncFullScreenPage(
                         Box(
                             modifier = Modifier
                                 .size(44.dp)
-                                .background(VynCameraBlue.copy(alpha = 0.15f), CircleShape),
+                                .background(FlareCameraBlue.copy(alpha = 0.15f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Outlined.CloudDone, contentDescription = null, tint = VynCameraBlue)
+                            Icon(Icons.Outlined.CloudDone, contentDescription = null, tint = FlareCameraBlue)
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Supabase Cloud Backend", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Text("Data syncs automatically with the Supabase backend", fontSize = 12.sp, color = VynTextSecondary)
+                            Text("Data syncs automatically with the Supabase backend", fontSize = 12.sp, color = FlareTextSecondary)
                         }
                         Surface(
                             color = Color(0xFF4CAF50).copy(alpha = 0.15f),
@@ -1263,7 +1291,7 @@ fun CloudSyncFullScreenPage(
                 Text(
                     text = "Your content is saved to Supabase as you create it. Failed operations are reported instead of being silently retried here.",
                     fontSize = 12.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
                 }
             }
@@ -1297,7 +1325,7 @@ fun CloudSyncFullScreenPage(
                 ) {
                     Column {
                         Text("Cached Media & Video Buffer", fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                        Text("ExoPlayer disk cache, images & video feed", fontSize = 12.sp, color = VynTextSecondary)
+                        Text("ExoPlayer disk cache, images & video feed", fontSize = 12.sp, color = FlareTextSecondary)
                     }
                     Text(
                         text = com.example.media.player.ExoPlayerCacheManager.getFormattedCacheSize(context),
@@ -1371,7 +1399,7 @@ fun CloudSyncFullScreenPage(
                 Button(
                     onClick = {
                         showExportDialog = false
-                        Toast.makeText(context, "Data export archive generated: vyn9_export.json 📥", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Data export archive generated: flareofficial_export.json 📥", Toast.LENGTH_LONG).show()
                     }
                 ) {
                     Text("Export & Download")
@@ -1429,7 +1457,7 @@ fun HelpSupportFullScreenPage(
         listOf(
             "How do I earn credits watching Reels?" to "Open the Reels tab and watch videos for at least 10 seconds. You will automatically receive reward credits in your wallet balance!",
             "How do I withdraw cash to bKash / Nagad?" to "Navigate to Rewards Dashboard -> Withdraw Funds -> Select your preferred payment method (bKash, Nagad, Rocket, Binance, or PayPal), enter your account number, and submit. Payouts are verified by Admin within 2-24 hours.",
-            "How does the 7-Day Login Streak work?" to "Log in to Vyn9 every consecutive day. Each day grants increasing bonus credits up to Day 7. Completing a full 7-day streak awards a bonus multiplier.",
+            "How does the 7-Day Login Streak work?" to "Log in to FlareOfficial every consecutive day. Each day grants increasing bonus credits up to Day 7. Completing a full 7-day streak awards a bonus multiplier.",
             "How do Referral Bonuses work?" to "Share your unique referral code from the Rewards Dashboard. When friends sign up using your code, you earn 500 coins and your friend receives 150 welcome bonus coins!",
             "How do I become a Verified Creator?" to "Maintain an active profile, post original content, and interact with the community. You can request a verification badge through the support ticket below."
         )
@@ -1480,7 +1508,7 @@ fun HelpSupportFullScreenPage(
                 var isExpanded by remember { mutableStateOf(false) }
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = VynOffWhite,
+                    color = FlareOffWhite,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { isExpanded = !isExpanded }
@@ -1500,7 +1528,7 @@ fun HelpSupportFullScreenPage(
                             Icon(
                                 imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                 contentDescription = null,
-                                tint = VynCameraBlue
+                                tint = FlareCameraBlue
                             )
                         }
                         if (isExpanded) {
@@ -1510,7 +1538,7 @@ fun HelpSupportFullScreenPage(
                             Text(
                                 text = answer,
                                 fontSize = 13.sp,
-                                color = VynTextSecondary,
+                                color = FlareTextSecondary,
                                 lineHeight = 18.sp
                             )
                         }
@@ -1524,14 +1552,14 @@ fun HelpSupportFullScreenPage(
 
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Select Category", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = VynTextSecondary)
+                    Text("Select Category", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = FlareTextSecondary)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1579,7 +1607,7 @@ fun HelpSupportFullScreenPage(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = VynCameraBlue)
+                        colors = ButtonDefaults.buttonColors(containerColor = FlareCameraBlue)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -1591,7 +1619,7 @@ fun HelpSupportFullScreenPage(
             // Direct Email Card
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = VynCameraBlue.copy(alpha = 0.1f),
+                color = FlareCameraBlue.copy(alpha = 0.1f),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -1599,10 +1627,10 @@ fun HelpSupportFullScreenPage(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(Icons.Outlined.Email, contentDescription = null, tint = VynCameraBlue)
+                    Icon(Icons.Outlined.Email, contentDescription = null, tint = FlareCameraBlue)
                     Column {
                         Text("Official Support Email", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("support@vyn9.social (24/7 Assistance)", fontSize = 12.sp, color = VynCameraBlue)
+                        Text("support@flareofficial.app (24/7 Assistance)", fontSize = 12.sp, color = FlareCameraBlue)
                     }
                 }
             }
@@ -1645,15 +1673,15 @@ fun TermsPrivacyFullScreenPage(
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("1. Terms of Service", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground)
                     Text(
-                        "Welcome to Vyn9 Social. By using our application, you agree to comply with our community standards and guidelines. Users must be at least 13 years of age. You are responsible for any activity that occurs under your account and for keeping your account credentials safe.",
+                        "Welcome to FlareOfficial. By using our application, you agree to comply with our community standards and guidelines. Users must be at least 13 years of age. You are responsible for any activity that occurs under your account and for keeping your account credentials safe.",
                         fontSize = 13.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         lineHeight = 18.sp
                     )
 
@@ -1663,7 +1691,7 @@ fun TermsPrivacyFullScreenPage(
                     Text(
                             "We value your privacy. We collect minimal information required to deliver social feeds, chat messages, and reward distribution. We never sell your personal data to third parties. All network communications with our authentication servers are encrypted using TLS 1.3 standards.",
                         fontSize = 13.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         lineHeight = 18.sp
                     )
 
@@ -1673,7 +1701,7 @@ fun TermsPrivacyFullScreenPage(
                     Text(
                         "Users can earn credits by watching authentic reels, completing daily login streaks, and inviting genuine friends. Any automated scripts, bot accounts, or fraudulent activities will lead to immediate wallet forfeiture and account suspension. Minimum cashout threshold is enforced per platform.",
                         fontSize = 13.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         lineHeight = 18.sp
                     )
 
@@ -1681,9 +1709,9 @@ fun TermsPrivacyFullScreenPage(
 
                     Text("4. Community Safety & Anti-Harassment", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground)
                     Text(
-                        "Harassment, hate speech, spamming, and illegal content are strictly prohibited on Vyn9. Violating posts will be removed immediately upon community report or moderation review.",
+                        "Harassment, hate speech, spamming, and illegal content are strictly prohibited on FlareOfficial. Violating posts will be removed immediately upon community report or moderation review.",
                         fontSize = 13.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         lineHeight = 18.sp
                     )
                 }
@@ -1710,7 +1738,7 @@ fun AboutAppFullScreenPage(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("About Vyn9", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                title = { Text("About FlareOfficial", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -1734,31 +1762,31 @@ fun AboutAppFullScreenPage(
                 modifier = Modifier
                     .size(88.dp)
                     .clip(RoundedCornerShape(22.dp))
-                    .background(VynStoryGradientStart),
+                    .background(FlareStoryGradientStart),
                 contentAlignment = Alignment.Center
             ) {
                 Text("V9", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 36.sp)
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Vyn9 Social & Rewards", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text("Version 1.3.0 (Build 204) · Release", fontSize = 13.sp, color = VynTextSecondary)
-                Text("Connect, Watch, Share & Earn Cash", fontSize = 12.sp, color = VynCameraBlue, fontWeight = FontWeight.Medium)
+                Text("FlareOfficial & Rewards", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Version 1.3.0 (Build 204) · Release", fontSize = 13.sp, color = FlareTextSecondary)
+                Text("Connect, Watch, Share & Earn Cash", fontSize = 12.sp, color = FlareCameraBlue, fontWeight = FontWeight.Medium)
             }
 
             // Features Card
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Key Architecture & Capabilities", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("• Kotlin & Jetpack Compose 100% Declarative UI", fontSize = 13.sp, color = VynTextSecondary)
-                    Text("• Supabase Cloud Sync & Real-Time Backend", fontSize = 13.sp, color = VynTextSecondary)
-                    Text("• Room Database Offline First Architecture", fontSize = 13.sp, color = VynTextSecondary)
-                    Text("• Reels Video Monetization & Daily Streak Engine", fontSize = 13.sp, color = VynTextSecondary)
-                    Text("• Multi-Channel Cashouts (bKash, Nagad, Rocket, Binance)", fontSize = 13.sp, color = VynTextSecondary)
+                    Text("• Kotlin & Jetpack Compose 100% Declarative UI", fontSize = 13.sp, color = FlareTextSecondary)
+                    Text("• Supabase Cloud Sync & Real-Time Backend", fontSize = 13.sp, color = FlareTextSecondary)
+                    Text("• Room Database Offline First Architecture", fontSize = 13.sp, color = FlareTextSecondary)
+                    Text("• Reels Video Monetization & Daily Streak Engine", fontSize = 13.sp, color = FlareTextSecondary)
+                    Text("• Multi-Channel Cashouts (bKash, Nagad, Rocket, Binance)", fontSize = 13.sp, color = FlareTextSecondary)
                 }
             }
 
@@ -1766,14 +1794,14 @@ fun AboutAppFullScreenPage(
             Button(
                 onClick = {
                     isCheckingUpdate = true
-                    Toast.makeText(context, "You are using the latest version of Vyn9! 🎉 (v1.3.0)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "You are using the latest version of FlareOfficial! 🎉 (v1.3.0)", Toast.LENGTH_SHORT).show()
                     isCheckingUpdate = false
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = VynCameraBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = FlareCameraBlue)
             ) {
                 Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -1781,14 +1809,242 @@ fun AboutAppFullScreenPage(
             }
 
             Text(
-                "© 2026 Vyn9 Social Platform. All rights reserved.",
+                "© 2026 FlareOfficial Platform. All rights reserved.",
                 fontSize = 11.sp,
-                color = VynTextSecondary,
+                color = FlareTextSecondary,
                 textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(20.dp))
         }
+    }
+}
+
+// ==========================================
+// 9. FULL SCREEN: MY WALLET (FINANCE)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MyWalletFullScreenPage(
+    viewModel: SocialViewModel,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val wallet by viewModel.earningsWallet.collectAsState()
+    val transactions by viewModel.monetizationTransactions.collectAsState()
+    val settings by viewModel.monetizationSettings.collectAsState()
+    
+    var showAddFundDialog by remember { mutableStateOf(false) }
+    var showWithdrawDialog by remember { mutableStateOf(false) }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = { Text("My Wallet", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Balance Card
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFF6C5CE7),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(
+                            "TOTAL BALANCE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "$${java.lang.String.format(java.util.Locale.US, "%.2f", wallet.availableBalance)}",
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Available for withdrawal & ad boosts",
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                onClick = { showAddFundDialog = true },
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White,
+                                    contentColor = Color(0xFF6C5CE7)
+                                )
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Add Fund", fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = { showWithdrawDialog = true },
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White.copy(alpha = 0.2f),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Withdraw", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Stats row (Total Added, Total Withdrawn)
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF39C12).copy(alpha = 0.1f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text("Total Added", fontSize = 11.sp, color = FlareTextSecondary)
+                            Text("$${java.lang.String.format(java.util.Locale.US, "%.2f", wallet.totalAddedFunds)}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFF39C12))
+                        }
+                    }
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD63031).copy(alpha = 0.1f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text("Total Withdraw", fontSize = 11.sp, color = FlareTextSecondary)
+                            Text("$${java.lang.String.format(java.util.Locale.US, "%.2f", wallet.totalWithdrawn)}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFD63031))
+                        }
+                    }
+                }
+            }
+
+            // Transaction History Title
+            item {
+                Text(
+                    "Transaction History",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            if (transactions.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Outlined.History, null, tint = FlareTextSecondary, modifier = Modifier.size(48.dp))
+                            Text("No transactions yet", color = FlareTextSecondary, fontSize = 13.sp)
+                        }
+                    }
+                }
+            } else {
+                items(transactions) { txn ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = FlareOffWhite)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = txn.description.ifBlank { txn.type },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                val date = remember(txn.createdAt) {
+                                    try {
+                                        java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.getDefault()).format(java.util.Date(txn.createdAt))
+                                    } catch (e: Exception) {
+                                        "Recently"
+                                    }
+                                }
+                                Text(
+                                    text = date,
+                                    fontSize = 11.sp,
+                                    color = FlareTextSecondary
+                                )
+                            }
+                            Text(
+                                text = (if (txn.type == "WITHDRAWAL") "-" else "+") + "$${java.lang.String.format(java.util.Locale.US, "%.2f", txn.amount)}",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = if (txn.type == "WITHDRAWAL") Color(0xFFD63031) else Color(0xFF00B894)
+                            )
+                        }
+                    }
+                }
+            }
+
+            item { Spacer(Modifier.height(30.dp)) }
+        }
+    }
+
+    if (showAddFundDialog) {
+        com.example.ui.components.PaymentGatewayDialog(
+            initialAmountBdt = 500.0,
+            title = "Deposit Funds to Wallet",
+            description = "Official bKash, Nagad, SSLCommerz, Stripe & Crypto Gateways",
+            onDismiss = { showAddFundDialog = false },
+            onPaymentSuccess = { usdAmount, bdtAmount, gateway, trxId ->
+                viewModel.addMonetizationFunds(
+                    amount = usdAmount,
+                    gateway = gateway.displayName,
+                    trxId = trxId
+                ) { success, msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    if (showWithdrawDialog) {
+        com.example.ui.components.CreatorWithdrawDialog(
+            availableBalanceUsd = wallet.availableBalance,
+            minimumWithdrawalUsd = settings.minimumWithdrawal,
+            onDismiss = { showWithdrawDialog = false },
+            onWithdrawSubmit = { amount, method, accountDetails ->
+                viewModel.requestMonetizationWithdrawal(amount, method, accountDetails) { success, msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    if (success) {
+                        showWithdrawDialog = false
+                    }
+                }
+            }
+        )
     }
 }
 
@@ -1805,12 +2061,12 @@ fun SettingsSection(
             text = title,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = VynTextSecondary,
+            color = FlareTextSecondary,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
         )
         Surface(
             shape = RoundedCornerShape(16.dp),
-            color = VynOffWhite,
+            color = FlareOffWhite,
             shadowElevation = 0.5.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -1844,7 +2100,7 @@ fun SettingsNavigationItem(
             modifier = Modifier
                 .size(38.dp)
                 .clip(CircleShape)
-                .background(VynButtonBg),
+                .background(FlareButtonBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -1866,7 +2122,7 @@ fun SettingsNavigationItem(
                 Text(
                     text = it,
                     fontSize = 12.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
             }
         }
@@ -1874,7 +2130,7 @@ fun SettingsNavigationItem(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
             contentDescription = null,
-            tint = VynTextSecondary.copy(alpha = 0.6f),
+            tint = FlareTextSecondary.copy(alpha = 0.6f),
             modifier = Modifier.size(14.dp)
         )
     }
@@ -1899,7 +2155,7 @@ fun SettingsToggleItem(
             modifier = Modifier
                 .size(38.dp)
                 .clip(CircleShape)
-                .background(VynButtonBg),
+                .background(FlareButtonBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -1921,7 +2177,7 @@ fun SettingsToggleItem(
                 Text(
                     text = it,
                     fontSize = 12.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
             }
         }
@@ -1931,7 +2187,7 @@ fun SettingsToggleItem(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = VynCameraBlue
+                checkedTrackColor = FlareCameraBlue
             )
         )
     }

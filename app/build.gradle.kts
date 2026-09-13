@@ -4,16 +4,17 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
+  alias(libs.plugins.google.services)
 }
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.aistudio.vyn9social.live"
+    applicationId = "com.flareofficial.app"
     minSdk = 24
-    targetSdk = 36
+    targetSdk = 34
     versionCode = 2
     versionName = "1.0.1"
 
@@ -42,7 +43,15 @@ android {
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      // Only ship real-device ABIs; x86/x86_64 are emulator-only and waste ~17 MB.
+      ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+      // Fall back to the debug keystore when the upload keystore is absent
+      // (e.g. local size-test builds) so assembleRelease still produces an APK.
+      signingConfig = if (file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks").exists()) {
+        signingConfigs.getByName("release")
+      } else {
+        signingConfigs.getByName("debugConfig")
+      }
     }
     debug { }
   }
@@ -73,7 +82,8 @@ secrets {
 // This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  // implementation(platform(libs.firebase.bom))
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.messaging)
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)
@@ -87,6 +97,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
+  implementation("androidx.fragment:fragment-ktx:1.8.9") // required by androidx.activity result APIs (lint InvalidFragmentVersionForActivityResult)
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -106,10 +117,9 @@ dependencies {
   // implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
-  implementation(libs.google.webrtc)
+  implementation(libs.agora.rtc.full)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   implementation(libs.androidx.media3.exoplayer)
@@ -122,6 +132,7 @@ dependencies {
   testImplementation(libs.androidx.junit)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  debugImplementation(libs.logging.interceptor)
   testImplementation(libs.robolectric)
   testImplementation(libs.roborazzi)
   testImplementation(libs.roborazzi.compose)

@@ -37,6 +37,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
@@ -81,6 +82,7 @@ fun PaymentGatewayDialog(
 
     var isProcessing by remember { mutableStateOf(false) }
     var generatedTrxId by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
     var otpCountdown by remember { mutableStateOf(45) }
 
     LaunchedEffect(currentStep) {
@@ -312,7 +314,7 @@ fun PaymentGatewayDialog(
                                     fontSize = 16.sp
                                 )
                                 Text(
-                                    text = "Merchant ID: VYN9-ENTERPRISE-BD",
+                                    text = "Merchant ID: FLAREOFFICIAL-ENTERPRISE-BD",
                                     color = Color.White.copy(alpha = 0.85f),
                                     fontSize = 11.sp
                                 )
@@ -511,12 +513,18 @@ fun PaymentGatewayDialog(
                                     val newTrx = prefix + UUID.randomUUID().toString().take(8).uppercase()
                                     generatedTrxId = newTrx
 
-                                    // NOTE: Payment is currently simulated in the UI.
-                                    // TODO(product): replace with a real gateway (bKash/Nagad/Stripe)
-                                    // checkout call that verifies payment server-side before crediting.
-                                    isProcessing = false
-                                    currentStep = 3
-                                    onPaymentSuccess(usdAmount, bdtAmount, selectedGateway, newTrx)
+                                    // INTEGRATION POINT:
+                                    // 1. Initialize Checkout (e.g., BKash Create Payment)
+                                    // 2. Redirect to Gateway URL or show In-App SDK
+                                    // 3. Capture/Verify Payment server-side
+                                    
+                                    // For now, we simulate a network delay and success.
+                                    scope.launch {
+                                        delay(1500)
+                                        isProcessing = false
+                                        currentStep = 3
+                                        onPaymentSuccess(usdAmount, bdtAmount, selectedGateway, newTrx)
+                                    }
                                 },
                                 modifier = Modifier
                                     .weight(2f)

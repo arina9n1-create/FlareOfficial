@@ -153,7 +153,7 @@ object ChatTranslationEngine {
         "i'm doing great! just editing some new photography reels 📸" to "আমি খুব ভালো আছি! নতুন ফটোগ্রাফি রিল এডিট করছি 📸",
         "got your message! let me know whenever you're free to chat" to "তোমার মেসেজ পেয়েছি! যখনই ফ্রি হবে আমাকে জানিও 👍",
         "got your message! let me know whenever you're free to chat 👍" to "তোমার মেসেজ পেয়েছি! যখনই ফ্রি হবে আমাকে জানিও 👍",
-        "thank you for contacting vyn9 vip support! all systems, rewards, and live chat streams are 100% operational 🟢" to "Vyn9 VIP সাপোর্টে যোগাযোগের জন্য ধন্যবাদ! সব সিস্টেম, রিওয়ার্ড এবং লাইভ চ্যাট ১০০% সচল রয়েছে 🟢",
+        "thank you for contacting flareofficial vip support! all systems, rewards, and live chat streams are 100% operational 🟢" to "FlareOfficial VIP সাপোর্টে যোগাযোগের জন্য ধন্যবাদ! সব সিস্টেম, রিওয়ার্ড এবং লাইভ চ্যাট ১০০% সচল রয়েছে 🟢",
         "don't forget to check your daily bonus streak in the rewards tab! 🪙💎" to "রিওয়ার্ডস ট্যাবে আপনার দৈনিক বোনাস স্ট্রিক চেক করতে ভুলবেন না! 🪙💎",
         "love the activity in here today! keep sharing and earning everyone 🚀🔥" to "আজকের দারুণ অ্যাক্টিভিটি দেখে ভালো লাগছে! সবাই পোস্ট শেয়ার করুন এবং ইনকাম করুন 🚀🔥",
         "hello" to "হ্যালো!",

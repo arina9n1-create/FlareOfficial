@@ -16,7 +16,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Centralized Ad Attribution Manager for Vyn9 Native Android
+ * Centralized Ad Attribution Manager for FlareOfficial Native Android
  * Responsibilities:
  * - Identifies content context (Post, Video, Reel)
  * - Listens for valid AdMob impression events
@@ -28,7 +28,7 @@ class AdAttributionManager(
     private val context: Context,
     private val monetizationRepository: MonetizationRepository
 ) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("vyn9_ad_attribution_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("flareofficial_ad_attribution_prefs", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(Dispatchers.IO)
 
     // Deduplication tracker: contentId_placement -> lastImpressionTimestamp

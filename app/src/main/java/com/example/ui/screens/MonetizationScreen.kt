@@ -35,7 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.*
-import com.example.ui.components.VynImage
+import com.example.ui.components.FlareImage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.SocialViewModel
 import java.text.SimpleDateFormat
@@ -794,7 +794,7 @@ fun MonetizationApplyPage(
                         ) {
                             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Congratulations! 🎉", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF00B894))
-                                Text("Your account is approved for Vyn9 Native Monetization. Ad impressions on your posts, videos, and reels are attributed to your Earnings Wallet.", fontSize = 12.sp)
+                                Text("Your account is approved for FlareOfficial Native Monetization. Ad impressions on your posts, videos, and reels are attributed to your Earnings Wallet.", fontSize = 12.sp)
                             }
                         }
                     }

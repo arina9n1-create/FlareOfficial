@@ -40,7 +40,8 @@ import java.util.Locale
 enum class RewardSubTab {
     TASKS,
     REFERRAL,
-    WALLET
+    WITHDRAW,
+    HISTORY
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,7 +99,7 @@ fun RewardScreen(
                         Text(
                             text = "Complete tasks, watch reels & withdraw real cash",
                             fontSize = 11.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                 },
@@ -261,7 +262,7 @@ fun RewardScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Button(
-                                onClick = { selectedTab = RewardSubTab.WALLET },
+                                onClick = { selectedTab = RewardSubTab.HISTORY },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color.White,
@@ -269,9 +270,9 @@ fun RewardScreen(
                                 ),
                                 modifier = Modifier.weight(1f).height(38.dp)
                             ) {
-                                Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Withdraw", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("History", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
 
                             OutlinedButton(
@@ -311,9 +312,14 @@ fun RewardScreen(
                     text = { Text("Refer & Earn", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                 )
                 Tab(
-                    selected = selectedTab == RewardSubTab.WALLET,
-                    onClick = { selectedTab = RewardSubTab.WALLET },
-                    text = { Text("Withdrawal", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                    selected = selectedTab == RewardSubTab.WITHDRAW,
+                    onClick = { selectedTab = RewardSubTab.WITHDRAW },
+                    text = { Text("Withdraw", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                )
+                Tab(
+                    selected = selectedTab == RewardSubTab.HISTORY,
+                    onClick = { selectedTab = RewardSubTab.HISTORY },
+                    text = { Text("History", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                 )
             }
 
@@ -321,7 +327,8 @@ fun RewardScreen(
             when (selectedTab) {
                 RewardSubTab.TASKS -> TasksTabContent(viewModel, tasks, wallet, adminConfig)
                 RewardSubTab.REFERRAL -> ReferralTabContent(viewModel, wallet, adminConfig, referrals, context)
-                RewardSubTab.WALLET -> WalletTabContent(viewModel, wallet, adminConfig, withdrawals, authState.email.ifBlank { profile.handle }, context)
+                RewardSubTab.WITHDRAW -> WithdrawTabContent(viewModel, wallet, adminConfig, withdrawals, authState.email.ifBlank { profile.handle }, context)
+                RewardSubTab.HISTORY -> HistoryTabContent(viewModel, wallet, adminConfig, withdrawals, referrals, authState.email.ifBlank { profile.handle }, context)
             }
         }
     }
@@ -354,7 +361,7 @@ fun TasksTabContent(
         item {
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 shadowElevation = 1.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -374,7 +381,7 @@ fun TasksTabContent(
                             Text(
                                 text = "Watch ${adminConfig.dailyTaskRequiredWatchReels} reels + Upload ${adminConfig.dailyTaskRequiredUploadReels} reels today",
                                 fontSize = 12.sp,
-                                color = VynTextSecondary
+                                color = FlareTextSecondary
                             )
                         }
 
@@ -560,7 +567,7 @@ fun TasksTabContent(
         item {
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -570,7 +577,7 @@ fun TasksTabContent(
                         "• Complete both watching and uploading to claim +${adminConfig.dailyTaskRewardCredits} Credits.\n" +
                         "• When someone joins using your referral code, their referral becomes SUCCESS after they complete their Daily Task for ${adminConfig.referralRequiredDailyTaskDays} days!",
                         fontSize = 12.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         lineHeight = 18.sp
                     )
                 }
@@ -594,7 +601,7 @@ fun ReferralTabContent(
     var inputRefCode by remember { mutableStateOf("") }
     var statusMsg by remember { mutableStateOf<String?>(null) }
 
-    val shareText = "🎉 Join Vyn9 social app & start earning real money by watching and uploading reels! Use my invite code: ${wallet.referralCode} to sign up: https://vyn9.app/join?ref=${wallet.referralCode}"
+    val shareText = "🎉 Join FlareOfficial social app & start earning real money by watching and uploading reels! Use my invite code: ${wallet.referralCode} to sign up: https://flareofficial.app/join?ref=${wallet.referralCode}"
 
     LazyColumn(
         modifier = Modifier
@@ -606,7 +613,7 @@ fun ReferralTabContent(
         item {
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 shadowElevation = 1.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -624,7 +631,7 @@ fun ReferralTabContent(
                     Text(
                         text = "Earn +${adminConfig.referralBonusCredits} Credits for every friend who joins & completes Daily Tasks for ${adminConfig.referralRequiredDailyTaskDays} days!",
                         fontSize = 13.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 6.dp, bottom = 18.dp)
                     )
@@ -646,7 +653,7 @@ fun ReferralTabContent(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
-                                Text("YOUR REFERRAL CODE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = VynTextSecondary)
+                                Text("YOUR REFERRAL CODE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = FlareTextSecondary)
                                 Text(
                                     text = wallet.referralCode,
                                     fontSize = 22.sp,
@@ -659,7 +666,7 @@ fun ReferralTabContent(
                             Button(
                                 onClick = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("Vyn9 Referral Code", wallet.referralCode)
+                                    val clip = ClipData.newPlainText("FlareOfficial Referral Code", wallet.referralCode)
                                     clipboard.setPrimaryClip(clip)
                                     Toast.makeText(context, "Referral code copied!", Toast.LENGTH_SHORT).show()
                                 },
@@ -735,10 +742,10 @@ fun ReferralTabContent(
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
-                    color = VynOffWhite
+                    color = FlareOffWhite
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Pending / Claimable", fontSize = 12.sp, color = VynTextSecondary)
+                        Text("Pending / Claimable", fontSize = 12.sp, color = FlareTextSecondary)
                         Text(
                             text = "${referrals.count { it.status != "CLAIMED" }} Friends",
                             fontSize = 18.sp,
@@ -751,10 +758,10 @@ fun ReferralTabContent(
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp),
-                    color = VynOffWhite
+                    color = FlareOffWhite
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Claimed Earnings", fontSize = 12.sp, color = VynTextSecondary)
+                        Text("Claimed Earnings", fontSize = 12.sp, color = FlareTextSecondary)
                         Text(
                             text = "+${wallet.referralEarnings} pts",
                             fontSize = 18.sp,
@@ -770,12 +777,12 @@ fun ReferralTabContent(
         item {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Have a Friend's Referral Code?", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Enter and activate their code below.", fontSize = 12.sp, color = VynTextSecondary)
+                    Text("Enter and activate their code below.", fontSize = 12.sp, color = FlareTextSecondary)
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -786,7 +793,7 @@ fun ReferralTabContent(
                         OutlinedTextField(
                             value = inputRefCode,
                             onValueChange = { inputRefCode = it.uppercase() },
-                            placeholder = { Text("e.g. VYN9WIN") },
+                            placeholder = { Text("e.g. FLAREOFFICIALWIN") },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f),
                             singleLine = true
@@ -825,13 +832,13 @@ fun ReferralTabContent(
             item {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = VynOffWhite,
+                    color = FlareOffWhite,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = "No referred friends yet. Share your invite code above to get started!",
                         fontSize = 12.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(20.dp)
                     )
@@ -841,7 +848,7 @@ fun ReferralTabContent(
             items(referrals) { ref ->
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = VynOffWhite,
+                    color = FlareOffWhite,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -865,7 +872,7 @@ fun ReferralTabContent(
                                     Text(
                                         text = "Daily Tasks: ${ref.dailyTasksCompleted} / ${ref.requiredDays} Days",
                                         fontSize = 11.sp,
-                                        color = VynTextSecondary
+                                        color = FlareTextSecondary
                                     )
                                 }
                             }
@@ -961,7 +968,7 @@ fun ReferralTabContent(
 }
 
 @Composable
-fun WalletTabContent(
+fun WithdrawTabContent(
     viewModel: SocialViewModel,
     wallet: com.example.data.model.UserRewardWallet,
     adminConfig: com.example.data.model.AdminConfig,
@@ -1057,7 +1064,7 @@ fun WalletTabContent(
         item {
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = VynOffWhite,
+                color = FlareOffWhite,
                 shadowElevation = 1.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1119,7 +1126,7 @@ fun WalletTabContent(
                                         )
                                         Text(
                                             text = if (currency == com.example.data.model.AppCurrency.BDT) "Min ৳${(method.minWithdrawalUSD * adminConfig.usdToBdtRate).toInt()}" else "Min $${method.minWithdrawalUSD}",
-                                            color = if (isSelected) Color.White.copy(alpha = 0.85f) else VynTextSecondary,
+                                            color = if (isSelected) Color.White.copy(alpha = 0.85f) else FlareTextSecondary,
                                             fontSize = 9.sp,
                                             textAlign = TextAlign.Center
                                         )
@@ -1379,8 +1386,88 @@ fun WalletTabContent(
                 }
             }
         }
+        item {
+            Spacer(modifier = Modifier.height(30.dp))
+        }
+    }
+}
 
-        // Payout History
+@Composable
+fun HistoryTabContent(
+    viewModel: SocialViewModel,
+    wallet: com.example.data.model.UserRewardWallet,
+    adminConfig: com.example.data.model.AdminConfig,
+    withdrawals: List<WithdrawalRequest>,
+    referrals: List<com.example.data.model.ReferralRecord>,
+    userEmail: String,
+    context: Context
+) {
+    val currency by viewModel.selectedCurrency.collectAsState()
+    
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Referral Summary Item
+        item {
+            Text(
+                text = "👥 Referral Rewards",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
+
+        if (referrals.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = FlareOffWhite,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "No referral history yet.",
+                        fontSize = 12.sp,
+                        color = FlareTextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(20.dp)
+                    )
+                }
+            }
+        } else {
+            items(referrals) { ref ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = FlareOffWhite,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("@${ref.refereeHandle}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(
+                                text = "Status: ${ref.status}",
+                                fontSize = 11.sp,
+                                color = if (ref.status == "CLAIMED") Color(0xFF27AE60) else FlareTextSecondary
+                            )
+                        }
+                        Text(
+                            text = "+${ref.bonusCredits} pts",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp,
+                            color = if (ref.status == "CLAIMED") Color(0xFF27AE60) else MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+            }
+        }
+
+        // Withdrawal History Item
         item {
             Text(
                 text = "📜 Withdrawal History",
@@ -1390,65 +1477,75 @@ fun WalletTabContent(
             )
         }
 
-        items(withdrawals) { req ->
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = VynOffWhite,
-                shadowElevation = 0.5.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+        if (withdrawals.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = FlareOffWhite,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(req.method, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("(${req.accountNumber})", fontSize = 12.sp, color = VynTextSecondary)
-                        }
-                        Text("Trx: ${req.id} • ${req.requestDate}", fontSize = 11.sp, color = VynTextSecondary)
-                        if (req.transactionNote.isNotBlank()) {
-                            Text(req.transactionNote, fontSize = 11.sp, color = Color(0xFF27AE60))
-                        }
-                    }
-
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = if (currency == com.example.data.model.AppCurrency.BDT) "৳${String.format(Locale.US, "%.2f", req.amountBDT)} BDT" else "$${String.format(Locale.US, "%.2f", req.amountUSD)} USD",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = if (currency == com.example.data.model.AppCurrency.BDT) "$${String.format(Locale.US, "%.2f", req.amountUSD)} USD" else "৳${String.format(Locale.US, "%.2f", req.amountBDT)} BDT",
-                            fontSize = 10.sp,
-                            color = VynTextSecondary
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = when (req.status) {
-                                "PAID" -> Color(0xFF27AE60).copy(alpha = 0.15f)
-                                "APPROVED" -> Color(0xFF2980B9).copy(alpha = 0.15f)
-                                "REJECTED" -> Color(0xFFE74C3C).copy(alpha = 0.15f)
-                                else -> Color(0xFFF39C12).copy(alpha = 0.15f)
+                    Text(
+                        text = "No withdrawal requests yet.",
+                        fontSize = 12.sp,
+                        color = FlareTextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(20.dp)
+                    )
+                }
+            }
+        } else {
+            items(withdrawals) { req ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = FlareOffWhite,
+                    shadowElevation = 0.5.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(req.method, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("(${req.accountNumber})", fontSize = 12.sp, color = FlareTextSecondary)
                             }
-                        ) {
+                            Text("Trx: ${req.id} • ${req.requestDate}", fontSize = 11.sp, color = FlareTextSecondary)
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                text = req.status,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = when (req.status) {
-                                    "PAID" -> Color(0xFF27AE60)
-                                    "APPROVED" -> Color(0xFF2980B9)
-                                    "REJECTED" -> Color(0xFFE74C3C)
-                                    else -> Color(0xFFF39C12)
-                                },
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                text = if (currency == com.example.data.model.AppCurrency.BDT) "৳${String.format(Locale.US, "%.2f", req.amountBDT)} BDT" else "$${String.format(Locale.US, "%.2f", req.amountUSD)} USD",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onBackground
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = when (req.status) {
+                                    "PAID" -> Color(0xFF27AE60).copy(alpha = 0.15f)
+                                    "APPROVED" -> Color(0xFF2980B9).copy(alpha = 0.15f)
+                                    "REJECTED" -> Color(0xFFE74C3C).copy(alpha = 0.15f)
+                                    else -> Color(0xFFF39C12).copy(alpha = 0.15f)
+                                }
+                            ) {
+                                Text(
+                                    text = req.status,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (req.status) {
+                                        "PAID" -> Color(0xFF27AE60)
+                                        "APPROVED" -> Color(0xFF2980B9)
+                                        "REJECTED" -> Color(0xFFE74C3C)
+                                        else -> Color(0xFFF39C12)
+                                    },
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
                 }

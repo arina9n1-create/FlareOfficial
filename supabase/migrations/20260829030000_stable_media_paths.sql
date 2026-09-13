@@ -1,4 +1,4 @@
--- VYN9 Stable Media Storage Architecture
+-- FLAREOFFICIAL Stable Media Storage Architecture
 -- 1. Add storage_path columns to all media tables
 
 ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS avatar_path TEXT;

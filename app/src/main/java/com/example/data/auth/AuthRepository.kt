@@ -18,7 +18,7 @@ data class AuthUserState(
 )
 
 class AuthRepository(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("vyn9_auth_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("flareofficial_auth_prefs", Context.MODE_PRIVATE)
     private val supabaseService = SupabaseService(context)
 
     private val _userState = MutableStateFlow(loadLocalUserState())
@@ -109,6 +109,17 @@ class AuthRepository(private val context: Context) {
     suspend fun signOut() {
         // Revoke server-side FIRST while the access token is still stored, then wipe every local
         // credential. A network failure during revocation never blocks the local wipe.
+        
+        // 1. Remove the FCM token from the backend for this device.
+        try {
+            val token = com.example.data.notification.NotificationPreferences.getFcmToken(context)
+            if (!token.isNullOrBlank()) {
+                supabaseService.deleteDeviceToken(token)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AuthRepository", "Failed to delete device token on sign-out", e)
+        }
+
         supabaseService.signOutRemote()
         prefs.edit().clear().apply()
         supabaseService.clearAuthSession()

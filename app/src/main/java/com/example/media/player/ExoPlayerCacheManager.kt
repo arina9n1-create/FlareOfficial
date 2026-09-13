@@ -13,8 +13,8 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -30,6 +30,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
 
 /**
  * -------------------------------------------------------------
@@ -44,9 +46,9 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(UnstableApi::class)
 object ExoPlayerCacheManager {
     private const val TAG = "ExoPlayerCacheManager"
-    private const val CACHE_DIR_NAME = "vyn9_media3_video_cache"
+    private const val CACHE_DIR_NAME = "flareofficial_media3_video_cache"
     private const val MAX_CACHE_SIZE_BYTES = 200L * 1024L * 1024L // 200 MB LRU Cache
-    private const val PRELOAD_BYTES = 2L * 1024L * 1024L // 2 MB preload per reel
+    private const val PRELOAD_BYTES = 4L * 1024L * 1024L // ~4 MB preload per reel (~1/3 of a typical reel)
 
     @Volatile
     private var simpleCache: SimpleCache? = null
@@ -59,7 +61,7 @@ object ExoPlayerCacheManager {
 
     /** Kept so auth headers can be refreshed without rebuilding the cache factory. */
     @Volatile
-    private var httpDataSourceFactory: DefaultHttpDataSource.Factory? = null
+    private var httpDataSourceFactory: OkHttpDataSource.Factory? = null
 
     private val preloadJobs = ConcurrentHashMap<String, Job>()
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -91,12 +93,21 @@ object ExoPlayerCacheManager {
         if (cacheDataSourceFactory == null) {
             val cache = getCache(context)
 
-            // Upstream HTTP Data Source with timeout optimizations & custom User-Agent
-            val httpFactory = DefaultHttpDataSource.Factory()
-                .setUserAgent("Vyn9Social-VideoPlayer/1.0 (Linux; Android; ExoPlayer/Media3)")
-                .setConnectTimeoutMs(15_000)
-                .setReadTimeoutMs(20_000)
-                .setAllowCrossProtocolRedirects(true)
+            // Upstream HTTP Data Source using OkHttp. IMPORTANT: OkHttp (unlike
+            // DefaultHttpDataSource) automatically strips Authorization/apikey
+            // headers when following a cross-host redirect. Our r2-download
+            // gateway responds 302 to a presigned R2 URL — if the Bearer header
+            // were forwarded, R2 S3 rejects it with HTTP 400 "Only one auth
+            // mechanism", which surfaced as infinite "Buffering Stream...".
+            val okHttpClient = OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build()
+
+            val httpFactory = OkHttpDataSource.Factory(okHttpClient)
+                .setUserAgent("FlareOfficial-VideoPlayer/1.0 (Linux; Android; ExoPlayer/Media3)")
             httpDataSourceFactory = httpFactory
 
             // Default Data Source for fallback (assets / raw resources)
@@ -122,12 +133,54 @@ object ExoPlayerCacheManager {
     @Synchronized
     fun applyAuthHeaders(context: Context) {
         val httpFactory = httpDataSourceFactory ?: return
-        val authPrefs = context.getSharedPreferences("vyn9_auth_prefs", Context.MODE_PRIVATE)
+        val authPrefs = context.getSharedPreferences("flareofficial_auth_prefs", Context.MODE_PRIVATE)
         val accessToken = authPrefs.getString("access_token", null)
             ?.takeIf { authPrefs.getBoolean("session_valid", false) && it.isNotBlank() }
         val requestHeaders = mutableMapOf("apikey" to Backend.KEY)
         accessToken?.let { requestHeaders["Authorization"] = "Bearer $it" }
         httpFactory.setDefaultRequestProperties(requestHeaders)
+    }
+
+
+
+    /**
+     * Ensures the cached Supabase access token is still valid BEFORE playback starts.
+     * The r2-download media gateway rejects expired tokens with 401, which makes
+     * reels sit in "Buffering Stream..." forever. Supabase access tokens expire
+     * after ~1 hour, so proactively refresh a stale (or nearly stale) token and
+     * re-apply the auth headers to the shared HTTP data source factory.
+     */
+    suspend fun ensureFreshToken(context: Context) {
+        val prefs = context.applicationContext
+            .getSharedPreferences("flareofficial_auth_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("session_valid", false)) return
+        val token = prefs.getString("access_token", null)?.takeIf { it.isNotBlank() } ?: return
+        val expirySeconds = tokenJwtExpirySeconds(token) ?: return
+        val nowSeconds = System.currentTimeMillis() / 1000
+        if (expirySeconds - nowSeconds < 120) { // expiring in <2 min -> refresh first
+            try {
+                val result = com.example.data.remote.SupabaseService(context).refreshAuthSession()
+                Log.d(TAG, "Stale access token refreshed before playback: $result")
+            } catch (e: Exception) {
+                Log.w(TAG, "Token refresh before playback failed", e)
+            }
+        }
+        // Re-apply headers so the (possibly renewed) token reaches the data source.
+        applyAuthHeaders(context)
+    }
+
+    private fun tokenJwtExpirySeconds(jwt: String): Long? = try {
+        val payloadPart = jwt.split(".")[1]
+        val payload = String(
+            android.util.Base64.decode(
+                payloadPart,
+                android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+            )
+        )
+        val exp = org.json.JSONObject(payload).optLong("exp", -1L)
+        exp.takeIf { it > 0 }
+    } catch (_: Exception) {
+        null
     }
 
     /**
@@ -136,14 +189,15 @@ object ExoPlayerCacheManager {
     fun createOptimizedExoPlayer(context: Context, isMuted: Boolean = false): ExoPlayer {
         val appContext = context.applicationContext
 
-        // 1. Customized Load Control for ultra-fast startup and smooth scrolling
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ 10_000,
-                /* maxBufferMs = */ 40_000,
-                /* bufferForPlaybackMs = */ 1_000, // Starts playback in just 1000ms
-                /* bufferForPlaybackAfterRebufferMs = */ 2_000
-            )
+    // Fast-start: begin buffering in ~300ms of data instead of 1s,
+    // and keep 8s min buffer so scrolling never stalls.
+    val loadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            /* minBufferMs = */ 8_000,
+            /* maxBufferMs = */ 40_000,
+            /* bufferForPlaybackMs = */ 300,
+            /* bufferForPlaybackAfterRebufferMs = */ 500
+        )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -177,7 +231,26 @@ object ExoPlayerCacheManager {
     }
 
     /**
-     * Pre-caches upcoming video reels in the background (preload first 2MB).
+     * Warms up the shared media cache + data source factory as soon as the app
+     * opens (not just when the Reels tab is entered), so the first reel starts
+     * playing instantly no matter which tab the user is on.
+     */
+    fun warmUp(context: Context) {
+        val appContext = context.applicationContext
+        scope.launch {
+            try {
+                ensureFreshToken(appContext)
+                getCacheDataSourceFactory(appContext)
+                Log.d(TAG, "Media cache warm-up complete")
+            } catch (e: Exception) {
+                Log.w(TAG, "Media cache warm-up failed", e)
+            }
+        }
+    }
+
+    /**
+     * Pre-caches upcoming video reels in the background (preload first ~4MB —
+     * roughly a third of a typical reel).
      * When the user scrolls to this reel, playback starts instantly with 0ms buffering!
      */
     fun preloadVideo(context: Context, videoUrl: String) {

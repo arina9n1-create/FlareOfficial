@@ -15,10 +15,27 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class RewardRepository(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("vyn9_rewards_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("flareofficial_rewards_prefs", Context.MODE_PRIVATE)
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     val rewardManager: RewardManager = RewardManager(context)
     private val scope = CoroutineScope(Dispatchers.IO)
+
+    // ---- Verification Badge (paid, fee set by Super Admin) ----
+    private val _hasVerificationBadge = MutableStateFlow(false)
+    val hasVerificationBadge: StateFlow<Boolean> = _hasVerificationBadge.asStateFlow()
+
+    init {
+        _hasVerificationBadge.value = prefs.getBoolean("user_verification_badge_active", false)
+    }
+
+    fun setVerificationBadge(active: Boolean) {
+        prefs.edit().putBoolean("user_verification_badge_active", active).apply()
+        _hasVerificationBadge.value = active
+    }
+
+    /** Activates the badge by paying the Super-Admin fee from the user's wallet (server RPC). */
+    suspend fun purchaseVerificationBadge(handle: String): Result<org.json.JSONObject> =
+        rewardManager.purchaseVerificationBadge(handle)
 
     private val _selectedCurrency = MutableStateFlow(AppCurrency.USD)
     val selectedCurrency: StateFlow<AppCurrency> = _selectedCurrency.asStateFlow()
@@ -37,6 +54,23 @@ class RewardRepository(private val context: Context) {
 
     private val _withdrawals = MutableStateFlow<List<WithdrawalRequest>>(emptyList())
     val withdrawals: StateFlow<List<WithdrawalRequest>> = _withdrawals.asStateFlow()
+
+    private val _totalPlatformCredits = MutableStateFlow(0)
+    val totalPlatformCredits: StateFlow<Int> = _totalPlatformCredits.asStateFlow()
+
+    // ---- Professional wallet state (server-authoritative via RPCs) ----
+    private val _walletSummary = MutableStateFlow(WalletSummary())
+    val walletSummary: StateFlow<WalletSummary> = _walletSummary.asStateFlow()
+    private val _walletTransactions = MutableStateFlow<List<WalletTransaction>>(emptyList())
+    val walletTransactions: StateFlow<List<WalletTransaction>> = _walletTransactions.asStateFlow()
+    private val _platformOverview = MutableStateFlow(PlatformWalletOverview())
+    val platformOverview: StateFlow<PlatformWalletOverview> = _platformOverview.asStateFlow()
+    private val _userEarnings = MutableStateFlow<List<UserEarningsOverview>>(emptyList())
+    val userEarnings: StateFlow<List<UserEarningsOverview>> = _userEarnings.asStateFlow()
+    private val _auditLogs = MutableStateFlow<List<WalletAuditLog>>(emptyList())
+    val auditLogs: StateFlow<List<WalletAuditLog>> = _auditLogs.asStateFlow()
+    private val _fraudFlags = MutableStateFlow<List<WalletFraudFlag>>(emptyList())
+    val fraudFlags: StateFlow<List<WalletFraudFlag>> = _fraudFlags.asStateFlow()
 
     init {
         _selectedCurrency.value = loadCurrency()
@@ -134,7 +168,7 @@ class RewardRepository(private val context: Context) {
     private fun generateRefCode(): String {
         val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         val randomPart = (1..5).map { chars.random() }.joinToString("")
-        return "VYN$randomPart"
+        return "FLARE$randomPart"
     }
 
     private fun loadAdminConfig(): AdminConfig {
@@ -150,6 +184,7 @@ class RewardRepository(private val context: Context) {
             creditsPerDollar = prefs.getInt("admin_credits_per_dollar", 2000),
             usdToBdtRate = prefs.getFloat("admin_usd_to_bdt_rate", 120.0f).toDouble(),
             minWithdrawalUSD = prefs.getFloat("admin_min_withdraw", 1.0f).toDouble(),
+            verificationBadgeFeeUSD = prefs.getFloat("admin_verification_badge_fee", 4.99f).toDouble(),
             isBkashEnabled = prefs.getBoolean("admin_bkash_enabled", true),
             isNagadEnabled = prefs.getBoolean("admin_nagad_enabled", true),
             isRocketEnabled = prefs.getBoolean("admin_rocket_enabled", true),
@@ -256,6 +291,7 @@ class RewardRepository(private val context: Context) {
             putInt("admin_credits_per_dollar", newConfig.creditsPerDollar)
             putFloat("admin_usd_to_bdt_rate", newConfig.usdToBdtRate.toFloat())
             putFloat("admin_min_withdraw", newConfig.minWithdrawalUSD.toFloat())
+            putFloat("admin_verification_badge_fee", newConfig.verificationBadgeFeeUSD.toFloat())
             putBoolean("admin_bkash_enabled", newConfig.isBkashEnabled)
             putBoolean("admin_nagad_enabled", newConfig.isNagadEnabled)
             putBoolean("admin_rocket_enabled", newConfig.isRocketEnabled)
@@ -727,6 +763,10 @@ class RewardRepository(private val context: Context) {
     /** Pulls ALL withdrawal requests from Supabase and merges them with the local cache. */
     suspend fun refreshWithdrawals(): Int = withContext(Dispatchers.IO) {
         val remote = rewardManager.fetchWithdrawals()
+        
+        // Also refresh the total platform balance while we are at it
+        _totalPlatformCredits.value = rewardManager.fetchTotalPlatformBalance()
+
         if (remote.isEmpty()) return@withContext _withdrawals.value.size
         val merged = (remote + _withdrawals.value.filter { local ->
             remote.none { it.id == local.id }
@@ -772,5 +812,115 @@ class RewardRepository(private val context: Context) {
             apply()
         }
         _tasks.value = loadTasks()
+    }
+
+    // ==================================================================
+    // PROFESSIONAL WALLET — server-authoritative operations
+    // ==================================================================
+
+    /** Pulls the authenticated user's wallet summary from the server. */
+    suspend fun refreshWalletSummary(userHandle: String): WalletSummary = withContext(Dispatchers.IO) {
+        if (userHandle.isBlank()) return@withContext _walletSummary.value
+        _walletSummary.value = _walletSummary.value.copy(loading = true, error = "")
+        val result = rewardManager.fetchWalletSummary(userHandle)
+        _walletSummary.value = if (result.loading || result.error.isNotEmpty()) {
+            result.copy(loading = false, error = result.error)
+        } else {
+            result.copy(loading = false)
+        }
+        _walletSummary.value
+    }
+
+    /** Redeems eligible reward credits into the withdrawable wallet (server-validated, no double redeem). */
+    suspend fun redeemCredits(userHandle: String, source: String): Result<String> = withContext(Dispatchers.IO) {
+        if (userHandle.isBlank()) return@withContext Result.failure(Exception("Not signed in"))
+        val result = rewardManager.redeemRewardCredits(userHandle, source)
+        if (result.isSuccess) {
+            refreshWalletSummary(userHandle)
+            // Refresh the local legacy wallet total too so the rest of the app stays consistent.
+            val s = _walletSummary.value
+            saveWallet(_wallet.value.copy(totalCredits = s.withdrawableCredits))
+        }
+        result.map { "Redeemed ${it.withdrawableCredits} coins into your wallet" }
+    }
+
+    /** Server-validated withdrawal request (funds reserved atomically). */
+    suspend fun requestWithdrawalV2(
+        handle: String,
+        email: String,
+        method: String,
+        account: String,
+        credits: Int,
+        usd: Double,
+        bdt: Double
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val clientRef = "WD-${System.currentTimeMillis()}-${(1000..9999).random()}"
+        val result = rewardManager.requestWalletWithdrawal(handle, email, method, account, credits, usd, bdt, clientRef)
+        if (result.isSuccess) {
+            refreshWithdrawals()
+            refreshWalletSummary(handle)
+        }
+        result
+    }
+
+    /** Pulls the authenticated user's transaction history. */
+    suspend fun refreshWalletTransactions(userHandle: String? = null): List<WalletTransaction> = withContext(Dispatchers.IO) {
+        val result = rewardManager.fetchWalletTransactions(userHandle)
+        _walletTransactions.value = result
+        result
+    }
+
+    /** Admin: refresh platform-wide wallet overview. */
+    suspend fun refreshPlatformOverview(): PlatformWalletOverview = withContext(Dispatchers.IO) {
+        _platformOverview.value = _platformOverview.value.copy(loading = true, error = "")
+        val result = rewardManager.fetchAdminWalletOverview()
+        _platformOverview.value = result.copy(loading = false)
+        result
+    }
+
+    /** Admin: refresh per-user earnings overview. */
+    suspend fun refreshUserEarnings(): List<UserEarningsOverview> = withContext(Dispatchers.IO) {
+        val result = rewardManager.fetchUserEarningsOverview()
+        _userEarnings.value = result
+        result
+    }
+
+    /** Admin: refresh audit log. */
+    suspend fun refreshAuditLogs(): List<WalletAuditLog> = withContext(Dispatchers.IO) {
+        val result = rewardManager.fetchAdminAuditLog()
+        _auditLogs.value = result
+        result
+    }
+
+    /** Admin: refresh fraud flags. */
+    suspend fun refreshFraudFlags(includeResolved: Boolean = false): List<WalletFraudFlag> = withContext(Dispatchers.IO) {
+        val result = rewardManager.fetchFraudFlags(includeResolved)
+        _fraudFlags.value = result
+        result
+    }
+
+    /** Super Admin: run fraud detection. */
+    suspend fun runFraudDetection(): List<WalletFraudFlag> = withContext(Dispatchers.IO) {
+        val result = rewardManager.detectSuspiciousActivity()
+        _fraudFlags.value = result
+        result
+    }
+
+    /** Super Admin: manual wallet adjustment (mandatory reason, audited). */
+    suspend fun adminAdjustWallet(target: String, amount: Int, reason: String, type: String): Result<String> =
+        rewardManager.adminAdjustWallet(target, amount, reason, type)
+
+    /** Staff: reject a withdrawal with atomically-refunded balance. */
+    suspend fun adminRejectWithdrawalV2(id: String, reason: String): Result<String> {
+        val result = rewardManager.adminRejectWithdrawalV2(id, reason)
+        if (result.isSuccess) refreshWithdrawals()
+        return result
+    }
+
+    /** Super Admin: resolve a fraud flag. */
+    suspend fun adminResolveFraudFlag(flagId: String, reason: String): Result<String> {
+        val result = rewardManager.adminResolveFraudFlag(flagId, reason)
+        if (result.isSuccess) refreshFraudFlags()
+        return result
     }
 }

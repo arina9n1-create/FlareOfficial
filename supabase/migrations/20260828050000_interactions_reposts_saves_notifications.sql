@@ -1,4 +1,4 @@
--- VYN9 Master Social Features Expansion
+-- FLAREOFFICIAL Master Social Features Expansion
 -- 1. Support Tables for Reposts & Saved Posts
 CREATE TABLE IF NOT EXISTS public.post_reposts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

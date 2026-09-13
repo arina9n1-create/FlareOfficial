@@ -31,7 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.*
-import com.example.ui.components.VynAvatar
+import com.example.ui.components.FlareAvatar
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.SocialViewModel
 import java.math.BigDecimal
@@ -932,7 +932,7 @@ fun AdminCreatorReportsTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            VynAvatar(avatarType = creator.userHandle, size = 42.dp)
+                            FlareAvatar(avatarType = creator.userHandle, size = 42.dp)
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(text = creator.userName, fontWeight = FontWeight.Black, fontSize = 14.sp)
@@ -1492,7 +1492,7 @@ fun AdminApplicationsTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                VynAvatar(avatarType = app.userAvatarType, size = 42.dp)
+                                FlareAvatar(avatarType = app.userAvatarType, size = 42.dp)
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
                                     Text(text = app.userName, fontWeight = FontWeight.Bold, fontSize = 14.sp)

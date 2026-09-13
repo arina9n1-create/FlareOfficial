@@ -18,7 +18,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class MonetizationRepository(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("vyn9_monetization_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("flareofficial_monetization_prefs", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(Dispatchers.IO)
 
     // -------------------------------------------------------------
@@ -561,7 +561,7 @@ class MonetizationRepository(private val context: Context) {
     }
 
     private fun loadBoostCampaigns(): List<PostBoostCampaign> {
-        val json = prefs.getString("vyn9_boost_campaigns", null) ?: return emptyList()
+        val json = prefs.getString("flareofficial_boost_campaigns", null) ?: return emptyList()
         return try {
             val array = JSONArray(json)
             val list = mutableListOf<PostBoostCampaign>()
@@ -620,7 +620,7 @@ class MonetizationRepository(private val context: Context) {
                 }
                 array.put(obj)
             }
-            prefs.edit().putString("vyn9_boost_campaigns", array.toString()).apply()
+            prefs.edit().putString("flareofficial_boost_campaigns", array.toString()).apply()
             _boostCampaigns.value = list
         } catch (e: Exception) {
             Log.e("MonetizationRepo", "Error saving boost campaigns: ${e.message}")
@@ -858,7 +858,7 @@ class MonetizationRepository(private val context: Context) {
                         id = obj.optString("id"),
                         revenuePeriodId = obj.optString("revenuePeriodId"),
                         reportDate = obj.optString("reportDate"),
-                        appId = obj.optString("appId", "ca-app-pub-vyn9-prod"),
+                        appId = obj.optString("appId", "ca-app-pub-flareofficial-prod"),
                         adUnitId = obj.optString("adUnitId"),
                         adFormat = obj.optString("adFormat", "NATIVE"),
                         countryCode = obj.optString("countryCode", "GLOBAL"),

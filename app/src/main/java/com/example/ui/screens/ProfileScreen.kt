@@ -33,8 +33,8 @@ import com.example.R
 import com.example.data.model.PostEntity
 import com.example.data.model.UserProfileEntity
 import com.example.ui.components.FriendsSectionView
-import com.example.ui.components.VynAvatar
-import com.example.ui.components.VynImage
+import com.example.ui.components.FlareAvatar
+import com.example.ui.components.FlareImage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainTab
 import com.example.ui.viewmodel.ProfileSubTab
@@ -94,15 +94,16 @@ fun ProfileScreen(
         item {
             ProfileDetailsSection(
                 profile = profile.copy(
-                    postsCount = maxOf(profile.postsCount, userPosts.size),
-                    friendsCount = maxOf(profile.friendsCount, friends.size)
+                    postsCount = maxOf(profile.postsCount, userPosts.size)
                 ),
                 role = currentUserRole,
                 showIdentity = false,
                 onEditProfileClick = { viewModel.openEditProfile() },
                 onShareProfileClick = { viewModel.openShareProfile() },
                 onCreateClick = { viewModel.openCreatePostSheet() },
-                onFriendsClick = { viewModel.setProfileSubTab(ProfileSubTab.FRIENDS) }
+                // Total reactions received across everything the user uploaded:
+                // posts (photos), reels/videos, etc.
+                likesCount = userPosts.sumOf { it.likesCount } + userReels.sumOf { it.likesCount }
             )
         }
 
@@ -141,7 +142,7 @@ fun ProfileScreen(
                                 Text(
                                     text = "Manage users, permissions, storage & payouts",
                                     fontSize = 11.sp,
-                                    color = VynTextSecondary
+                                    color = FlareTextSecondary
                                 )
                             }
                         }
@@ -233,7 +234,19 @@ fun ProfileScreen(
                             onRepostClick = { viewModel.toggleRepost(post) },
                             onShareClick = { viewModel.sharePost(context, post) },
                             onSaveClick = { viewModel.toggleSave(post) },
-                            onDeleteClick = { viewModel.deletePost(post) }
+                            onDeleteClick = { viewModel.deletePost(post) },
+                            onProfileClick = { viewModel.viewUserProfile(post.userHandle) },
+                            onMediaClick = {
+                                if (post.isReelPost) {
+                                    viewModel.openReel(post.remoteId)
+                                } else {
+                                    viewModel.openFullScreenPhotoPreview(
+                                        title = post.username,
+                                        imageUri = com.example.util.MediaStorageResolver.resolve(post.postImageRes, post.storagePath),
+                                        subtitle = post.caption
+                                    )
+                                }
+                            }
                         )
                     }
                 }
@@ -271,8 +284,9 @@ fun ProfileScreen(
                                         .background(Color.Black),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    VynImage(
-                                        imageResName = reel.imageRes.ifBlank { reel.videoUrl.orEmpty() },
+                                    FlareImage(
+                                        imageResName = reel.imageRes,
+                                        storagePath = reel.thumbnailPath,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
@@ -296,8 +310,8 @@ fun ProfileScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("❤️ ${reel.likesCount} likes", fontSize = 12.sp, color = VynTextSecondary)
-                                        Text("💬 ${reel.commentsCount} comments", fontSize = 12.sp, color = VynTextSecondary)
+                                        Text("❤️ ${reel.likesCount} likes", fontSize = 12.sp, color = FlareTextSecondary)
+                                        Text("💬 ${reel.commentsCount} comments", fontSize = 12.sp, color = FlareTextSecondary)
                                     }
                                 }
                             }
@@ -331,7 +345,19 @@ fun ProfileScreen(
                             onRepostClick = { viewModel.toggleRepost(post) },
                             onShareClick = { viewModel.sharePost(context, post) },
                             onSaveClick = { viewModel.toggleSave(post) },
-                            onDeleteClick = { viewModel.deletePost(post) }
+                            onDeleteClick = { viewModel.deletePost(post) },
+                            onProfileClick = { viewModel.viewUserProfile(post.userHandle) },
+                            onMediaClick = {
+                                if (post.isReelPost) {
+                                    viewModel.openReel(post.remoteId)
+                                } else {
+                                    viewModel.openFullScreenPhotoPreview(
+                                        title = post.username,
+                                        imageUri = com.example.util.MediaStorageResolver.resolve(post.postImageRes, post.storagePath),
+                                        subtitle = post.caption
+                                    )
+                                }
+                            }
                         )
                     }
                 }
@@ -354,7 +380,19 @@ fun ProfileScreen(
                             onRepostClick = { viewModel.toggleRepost(post) },
                             onShareClick = { viewModel.sharePost(context, post) },
                             onSaveClick = { viewModel.toggleSave(post) },
-                            onDeleteClick = { viewModel.deletePost(post) }
+                            onDeleteClick = { viewModel.deletePost(post) },
+                            onProfileClick = { viewModel.viewUserProfile(post.userHandle) },
+                            onMediaClick = {
+                                if (post.isReelPost) {
+                                    viewModel.openReel(post.remoteId)
+                                } else {
+                                    viewModel.openFullScreenPhotoPreview(
+                                        title = post.username,
+                                        imageUri = com.example.util.MediaStorageResolver.resolve(post.postImageRes, post.storagePath),
+                                        subtitle = post.caption
+                                    )
+                                }
+                            }
                         )
                     }
                 }
@@ -373,6 +411,7 @@ fun ProfileHeaderSection(
     onDeleteCover: () -> Unit,
     onDeleteAvatar: () -> Unit,
     frameStyle: String = "none",
+    isOwner: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var coverMenuExpanded by remember { mutableStateOf(false) }
@@ -388,9 +427,9 @@ fun ProfileHeaderSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(280.dp)
-                .clickable(onClick = onEditCover)
+                .clickable(enabled = isOwner, onClick = onEditCover)
         ) {
-            VynImage(
+            FlareImage(
                 imageResName = profile.coverType,
                 storagePath = profile.coverPath,
                 modifier = Modifier
@@ -416,7 +455,7 @@ fun ProfileHeaderSection(
         }
 
         // Camera button on cover photo (MOVED TO 3-DOT MENU)
-
+        if (isOwner) {
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -457,6 +496,7 @@ fun ProfileHeaderSection(
                 )
             }
         }
+        }
 
         // Circular Profile Avatar (overlapping bottom left)
         Column(
@@ -485,9 +525,9 @@ fun ProfileHeaderSection(
                         } else Modifier
                     )
                     .clip(CircleShape)
-                    .clickable(onClick = onEditAvatar)
+                    .clickable(enabled = isOwner, onClick = onEditAvatar)
             ) {
-                VynAvatar(
+                FlareAvatar(
                     avatarType = profile.avatarType,
                     storagePath = profile.avatarPath,
                     size = 110.dp,
@@ -529,6 +569,7 @@ fun ProfileHeaderSection(
             )
         }
 
+        if (isOwner) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -572,7 +613,7 @@ fun ProfileHeaderSection(
                     .padding(start = 96.dp, bottom = 60.dp)
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(VynCameraBlue)
+                    .background(FlareCameraBlue)
                     .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
                     .clickable(onClick = onEditAvatar)
                     .testTag("change_avatar_badge_button"),
@@ -585,6 +626,7 @@ fun ProfileHeaderSection(
                     modifier = Modifier.size(14.dp)
                 )
             }
+        }
 
     }
 }
@@ -597,7 +639,9 @@ fun ProfileDetailsSection(
     onEditProfileClick: () -> Unit,
     onShareProfileClick: () -> Unit,
     onCreateClick: () -> Unit,
-    onFriendsClick: () -> Unit = {},
+    editProfileLabel: String = "Edit Profile",
+    showCreateButton: Boolean = true,
+    likesCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -642,7 +686,7 @@ fun ProfileDetailsSection(
             Text(
                 text = "@${profile.handle}",
                 fontSize = 14.sp,
-                color = VynTextSecondary,
+                color = FlareTextSecondary,
                 modifier = Modifier
                     .padding(top = 2.dp)
                     .testTag("profile_handle_text")
@@ -696,22 +740,17 @@ fun ProfileDetailsSection(
             )
         }
 
-        // Stats Row: Posts, Friends 🤝, Followers, Following
+        // Stats Row: Followers, Following, Posts, Likes
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 16.dp),
             horizontalArrangement = Arrangement.Start
         ) {
-            ProfileStatItem(count = profile.postsCount.toString(), label = "Posts", modifier = Modifier.weight(1f))
-            ProfileStatItem(
-                count = profile.friendsCount.toString(),
-                label = "Friends 🤝",
-                onClick = onFriendsClick,
-                modifier = Modifier.weight(1f)
-            )
             ProfileStatItem(count = profile.followersCount.toString(), label = "Followers", modifier = Modifier.weight(1f))
             ProfileStatItem(count = profile.followingCount.toString(), label = "Following", modifier = Modifier.weight(1f))
+            ProfileStatItem(count = profile.postsCount.toString(), label = "Posts", modifier = Modifier.weight(1f))
+            ProfileStatItem(count = likesCount.toString(), label = "Likes", modifier = Modifier.weight(1f))
         }
 
         // Action Buttons: Edit Profile, Share Profile, and Create Content (+)
@@ -723,7 +762,7 @@ fun ProfileDetailsSection(
             Button(
                 onClick = onEditProfileClick,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = VynButtonBg,
+                    containerColor = FlareButtonBg,
                     contentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 shape = RoundedCornerShape(8.dp),
@@ -734,7 +773,7 @@ fun ProfileDetailsSection(
                 contentPadding = PaddingValues(0.dp)
             ) {
                 Text(
-                    text = "Edit Profile",
+                    text = editProfileLabel,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -743,7 +782,7 @@ fun ProfileDetailsSection(
             Button(
                 onClick = onShareProfileClick,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = VynButtonBg,
+                    containerColor = FlareButtonBg,
                     contentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 shape = RoundedCornerShape(8.dp),
@@ -761,6 +800,7 @@ fun ProfileDetailsSection(
             }
 
             // Create (+) Button
+            if (showCreateButton) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.primary,
@@ -778,6 +818,7 @@ fun ProfileDetailsSection(
                         modifier = Modifier.size(22.dp)
                     )
                 }
+            }
             }
         }
     }
@@ -804,7 +845,7 @@ fun ProfileStatItem(
         Text(
             text = label,
             fontSize = 13.sp,
-            color = if (onClick != null) MaterialTheme.colorScheme.primary else VynTextSecondary,
+            color = if (onClick != null) MaterialTheme.colorScheme.primary else FlareTextSecondary,
             fontWeight = if (onClick != null) FontWeight.SemiBold else FontWeight.Normal
         )
     }
@@ -846,6 +887,7 @@ fun ProfileSubTabRow(
             onClick = { onTabSelect(ProfileSubTab.REPOSTS) },
             testTag = "profile_tab_reposts"
         )
+        // Saved tab is always visible for both owner and visitor; content filtering is handled in the tab content.
         ProfileTabButton(
             icon = Icons.Outlined.BookmarkBorder,
             isSelected = selectedTab == ProfileSubTab.SAVED,
@@ -865,14 +907,14 @@ fun ProfileTabButton(
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 24.dp)
+            .padding(vertical = 10.dp, horizontal = 12.dp)
             .testTag(testTag),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (isSelected) MaterialTheme.colorScheme.onBackground else VynTextSecondary,
+            tint = if (isSelected) MaterialTheme.colorScheme.onBackground else FlareTextSecondary,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.height(6.dp))
@@ -904,7 +946,7 @@ fun EmptyStateView(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = VynTextSecondary,
+            tint = FlareTextSecondary,
             modifier = Modifier.size(48.dp)
         )
         Text(
@@ -916,7 +958,7 @@ fun EmptyStateView(
         Text(
             text = subtitle,
             fontSize = 13.sp,
-            color = VynTextSecondary
+            color = FlareTextSecondary
         )
         if (actionButtonText != null && onActionClick != null) {
             Spacer(modifier = Modifier.height(8.dp))

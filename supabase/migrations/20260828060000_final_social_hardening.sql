@@ -1,4 +1,4 @@
--- VYN9 Final Social Hardening Migration
+-- FLAREOFFICIAL Final Social Hardening Migration
 -- 1. Notifications Table Alignment
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS recipient_handle TEXT;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS actor_handle TEXT;

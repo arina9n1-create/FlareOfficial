@@ -1,4 +1,4 @@
--- VYN9 Admin Promotion RPC
+-- FLAREOFFICIAL Admin Promotion RPC
 -- This allows a SUPER_ADMIN to change other users' roles without needing the service_role key.
 
 CREATE OR REPLACE FUNCTION public.promote_user(

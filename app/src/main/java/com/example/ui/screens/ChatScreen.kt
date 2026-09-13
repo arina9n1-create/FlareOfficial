@@ -50,8 +50,6 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     val isInChatThread by viewModel.isInChatThread.collectAsState()
-    val activeCallState by viewModel.activeCallState.collectAsState()
-    val incomingCall by viewModel.incomingCall.collectAsState()
     val showNoteCreatorDialog by viewModel.showNoteCreatorDialog.collectAsState()
     val showNewMessageDialog by viewModel.showNewMessageDialog.collectAsState()
 
@@ -60,85 +58,31 @@ fun ChatScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .testTag("instagram_chat_screen_root")
+            .testTag("flareofficial_chat_screen_root")
     ) {
         Crossfade(
             targetState = isInChatThread,
-            label = "instagram_dm_transition",
+            label = "flareofficial_dm_transition",
             animationSpec = tween(durationMillis = 250)
         ) { inThread ->
             if (inThread) {
-                InstagramConversationScreen(viewModel = viewModel)
+                FlareOfficialConversationScreen(viewModel = viewModel)
             } else {
-                InstagramDirectInboxScreen(viewModel = viewModel)
+                FlareOfficialDirectInboxScreen(viewModel = viewModel)
             }
         }
 
-        // Modern High-Definition Video & Audio Call Overlay (real WebRTC renderers)
-        activeCallState?.let { call ->
-            ModernInstagramCallOverlay(
-                call = call,
-                onEndCall = { viewModel.endCall() },
-                onToggleMute = { viewModel.toggleCallMute() },
-                onToggleCamera = { viewModel.toggleCallCamera() },
-                onToggleSpeaker = { viewModel.toggleCallSpeaker() },
-                onFlipCamera = { viewModel.flipCallCamera() },
-                onToggleScreenShare = { viewModel.toggleScreenSharing() },
-                localRenderer = viewModel.webRtcCallManager.localVideoRenderer,
-                remoteRenderer = viewModel.webRtcCallManager.remoteVideoRenderer
-            )
-        }
-
-        // Incoming Call Dialog
-        incomingCall?.let { signal ->
-            AlertDialog(
-                onDismissRequest = { viewModel.rejectIncomingCall() },
-                title = {
-                    Text(
-                        text = "Incoming ${if (signal.callType == "VIDEO") "Video" else "Audio"} Call",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                },
-                text = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        VynAvatar(avatarType = signal.callerAvatar, size = 64.dp)
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = signal.callerName.ifBlank { "@${signal.callerHandle}" },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "@${signal.callerHandle}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                            color = VynTextSecondary
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.acceptIncomingCall() }) {
-                        Text("Accept", color = InstagramPink)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.rejectIncomingCall() }) {
-                        Text("Decline", color = VynTextSecondary)
-                    }
-                }
-            )
-        }
-
-        // Instagram Note Creator Sheet
+        // FlareOfficial Note Creator Sheet
         if (showNoteCreatorDialog) {
-            InstagramNoteCreatorSheet(
+            FlareOfficialNoteCreatorSheet(
                 viewModel = viewModel,
                 onDismiss = { viewModel.toggleNoteCreator(false) }
             )
         }
 
-        // Instagram New Message / Search Dialog
+        // FlareOfficial New Message / Search Dialog
         if (showNewMessageDialog) {
-            InstagramNewMessageSheet(
+            FlareOfficialNewMessageSheet(
                 viewModel = viewModel,
                 onDismiss = { viewModel.toggleNewMessageDialog(false) }
             )
@@ -148,12 +92,12 @@ fun ChatScreen(
 
 /**
  * -------------------------------------------------------------
- * 1. INSTAGRAM DIRECT INBOX SCREEN
+ * 1. FLAREOFFICIAL DIRECT INBOX SCREEN
  * -------------------------------------------------------------
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InstagramDirectInboxScreen(
+fun FlareOfficialDirectInboxScreen(
     viewModel: SocialViewModel,
     modifier: Modifier = Modifier
 ) {
@@ -162,15 +106,16 @@ fun InstagramDirectInboxScreen(
     val notesList by viewModel.notesList.collectAsState()
     val searchQuery by viewModel.directSearchQuery.collectAsState()
     val selectedTab by viewModel.directInboxTab.collectAsState()
+    val searchUsers by viewModel.userSearchResults.collectAsState()
+    val searchUsersLoading by viewModel.userSearchLoading.collectAsState()
+    val presenceByHandle by viewModel.presenceByHandle.collectAsState()
 
-    var showVynNumber by remember { mutableStateOf(false) }
+    var showFlareNumber by remember { mutableStateOf(false) }
     var showPersonalId by remember { mutableStateOf(false) }
     var selectedActionRoom by remember { mutableStateOf<LiveChatRoom?>(null) }
 
-    // Keep MainActivity's bottom bar hidden while a full-screen chat overlay is open,
-    // the same way it hides for Primary chat threads.
-    LaunchedEffect(showVynNumber, showPersonalId) {
-        viewModel.setChatOverlayOpen(showVynNumber || showPersonalId)
+    LaunchedEffect(showFlareNumber, showPersonalId) {
+        viewModel.setChatOverlayOpen(showFlareNumber || showPersonalId)
     }
 
     val filteredRooms = remember(availableRooms, searchQuery, selectedTab) {
@@ -189,9 +134,9 @@ fun InstagramDirectInboxScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .testTag("instagram_inbox_view")
+            .testTag("flareofficial_inbox_view")
     ) {
-        // --- TOP BAR (Instagram Direct Style) ---
+        // --- TOP BAR (FlareOfficial Direct Style) ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -200,7 +145,7 @@ fun InstagramDirectInboxScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // App brand title (same design as the main top bar)
-            VynBrandTitle()
+            FlareBrandTitle()
 
             // Right Action Icons: Notes / Video Call / Edit Message
             Row(
@@ -237,7 +182,7 @@ fun InstagramDirectInboxScreen(
             }
         }
 
-        // --- SEARCH BAR (Instagram Pill) ---
+        // --- SEARCH BAR (FlareOfficial Pill) ---
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -255,12 +200,15 @@ fun InstagramDirectInboxScreen(
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Search",
-                    tint = VynTextSecondary,
+                    tint = FlareTextSecondary,
                     modifier = Modifier.size(20.dp)
                 )
                 androidx.compose.foundation.text.BasicTextField(
                     value = searchQuery,
-                    onValueChange = { viewModel.setDirectSearchQuery(it) },
+                    onValueChange = {
+                        viewModel.setDirectSearchQuery(it)
+                        viewModel.setUserSearchQuery(it)
+                    },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                     textStyle = androidx.compose.ui.text.TextStyle(
@@ -272,7 +220,7 @@ fun InstagramDirectInboxScreen(
                             Text(
                                 text = "Search messages, channels & notes...",
                                 fontSize = 14.sp,
-                                color = VynTextSecondary
+                                color = FlareTextSecondary
                             )
                         }
                         innerTextField()
@@ -286,7 +234,7 @@ fun InstagramDirectInboxScreen(
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Clear",
-                            tint = VynTextSecondary,
+                            tint = FlareTextSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -297,9 +245,9 @@ fun InstagramDirectInboxScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .testTag("instagram_inbox_list")
+                .testTag("flareofficial_inbox_list")
         ) {
-            // --- 1. INSTAGRAM NOTES TRAY ---
+            // --- 1. FLAREOFFICIAL NOTES TRAY ---
             item {
                 Column(modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)) {
                     LazyRow(
@@ -308,7 +256,7 @@ fun InstagramDirectInboxScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         items(notesList, key = { it.id }) { note ->
-                            InstagramNoteItem(
+                            FlareOfficialNoteItem(
                                 note = note,
                                 onClick = {
                                     if (note.isMe) {
@@ -334,16 +282,16 @@ fun InstagramDirectInboxScreen(
                 ) {
                     listOf(
                         "PRIMARY" to "Primary",
-                        "vyn_number" to "VYN NUMBER",
+                        "flare_number" to "FLARE NUMBER",
                         "personal_id" to "Personal ID",
-                        "REQUESTS" to "Requests (${availableRooms.sumOf { it.unreadCount }})"
+                        "REQUESTS" to "Requests"
                     ).forEach { (key, label) ->
-                        val isSelected = selectedTab == key && key != "vyn_number" && key != "personal_id"
+                        val isSelected = selectedTab == key && key != "flare_number" && key != "personal_id"
                         Column(
                             modifier = Modifier
                                 .clickable {
                                     when (key) {
-                                        "vyn_number" -> showVynNumber = true
+                                        "flare_number" -> showFlareNumber = true
                                         "personal_id" -> showPersonalId = true
                                         else -> viewModel.setDirectInboxTab(key)
                                     }
@@ -354,7 +302,7 @@ fun InstagramDirectInboxScreen(
                                 text = label,
                                 fontSize = 14.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) MaterialTheme.colorScheme.onBackground else VynTextSecondary
+                                color = if (isSelected) MaterialTheme.colorScheme.onBackground else FlareTextSecondary
                             )
                             if (isSelected) {
                                 Spacer(modifier = Modifier.height(3.dp))
@@ -375,10 +323,79 @@ fun InstagramDirectInboxScreen(
             }
 
 
+            // --- 3.5 FLAREOFFICIAL ACCOUNT SEARCH RESULTS (from the top search bar) ---
+            if (searchQuery.isNotBlank()) {
+                if (searchUsersLoading) {
+                    item {
+                        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text("Searching people...", fontSize = 13.sp, color = FlareTextSecondary)
+                        }
+                    }
+                } else if (searchUsers.isEmpty()) {
+                    item {
+                        Text(
+                            "No FlareOfficial accounts found for \"$searchQuery\"",
+                            fontSize = 13.sp,
+                            color = FlareTextSecondary,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                } else {
+                    items(searchUsers, key = { "srch_${it.uid}_${it.handle}" }) { user ->
+                        val isSelf = user.handle.equals(viewModel.profile.value.handle, ignoreCase = true)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (isSelf) {
+                                        viewModel.setTab(MainTab.PROFILE)
+                                    } else {
+                                        viewModel.setDirectSearchQuery("")
+                                        viewModel.setUserSearchQuery("")
+                                        viewModel.openDirectChatWithUser(user)
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FlareAvatar(avatarType = user.avatarType, storagePath = user.avatarPath, size = 44.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    user.name.ifBlank { user.handle },
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "@${user.handle}${if (isSelf) " · you" else ""}",
+                                    fontSize = 12.sp,
+                                    color = FlareTextSecondary
+                                )
+                            }
+                            if (!isSelf) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Chat",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // --- 4. CONVERSATION THREADS ---
             items(filteredRooms, key = { it.id }) { room ->
-                InstagramConversationListItem(
+                FlareOfficialConversationListItem(
                     room = room,
+                    peerHandle = viewModel.directPartnerHandle(room.id),
+                    presence = presenceByHandle,
                     onClick = { viewModel.openDirectThread(room.id) },
                     onLongClick = { selectedActionRoom = room },
                     onCameraClick = { viewModel.openDirectThread(room.id) },
@@ -403,35 +420,40 @@ fun InstagramDirectInboxScreen(
         )
     }
 
-    // VYN NUMBER overlay — phone-number based communication system (separate from Primary)
-    if (showVynNumber) {
-        val VynNumberViewModel: com.example.ui.viewmodel.VynNumberViewModel =
+    // FLARE NUMBER overlay â€” phone-number based communication system (separate from Primary)
+    if (showFlareNumber) {
+        val FlareNumberViewModel: com.example.ui.viewmodel.FlareNumberViewModel =
             androidx.lifecycle.viewmodel.compose.viewModel()
-        com.example.ui.screens.VynNumberScreen(
-            viewModel = VynNumberViewModel,
-            onDismiss = { showVynNumber = false }
+        com.example.ui.screens.FlareNumberScreen(
+            viewModel = FlareNumberViewModel,
+            onDismiss = { showFlareNumber = false }
         )
     }
 
-    // Personal ID overlay — private separate-identity messaging (never shows Vyn9 account)
+    // Personal ID overlay â€” private separate-identity messaging (never shows FlareOfficial account)
     if (showPersonalId) {
         val PersonalIdViewModel: com.example.ui.viewmodel.PersonalIdViewModel =
             androidx.lifecycle.viewmodel.compose.viewModel()
         com.example.ui.screens.PersonalIdScreen(
             viewModel = PersonalIdViewModel,
-            onDismiss = { showPersonalId = false }
+            onDismiss = { showPersonalId = false },
+            onSignOut = {
+                showPersonalId = false
+                // Sign out ONLY the Personal ID session â€” the FlareOfficial account stays logged in.
+                PersonalIdViewModel.signOutPersonalId()
+            }
         )
     }
 }
 
 /**
  * -------------------------------------------------------------
- * 2. INSTAGRAM NOTE ITEM (Bubble with avatar)
+ * 2. FLAREOFFICIAL NOTE ITEM (Bubble with avatar)
  * -------------------------------------------------------------
  */
 @Composable
-fun InstagramNoteItem(
-    note: InstagramNote,
+fun FlareOfficialNoteItem(
+    note: FlareOfficialNote,
     onClick: () -> Unit
 ) {
     Column(
@@ -455,42 +477,21 @@ fun InstagramNoteItem(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = note.noteText,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (note.musicTrack != null) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            modifier = Modifier.padding(top = 1.dp)
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp).fillMaxWidth()
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = InstagramPink,
-                                modifier = Modifier.size(9.dp)
-                            )
                             Text(
-                                text = note.musicTrack,
-                                fontSize = 8.sp,
-                                color = InstagramPink,
+                                text = note.noteText,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
+                                textAlign = TextAlign.Center,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                    }
-                }
             }
         }
 
@@ -498,7 +499,7 @@ fun InstagramNoteItem(
         val borderBrush = if (note.isMe) {
             Brush.linearGradient(listOf(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)))
         } else {
-            Brush.linearGradient(listOf(InstagramDeepPurple, InstagramPink, InstagramYellow))
+            Brush.linearGradient(listOf(FlareOfficialDeepPurple, FlareOfficialPink, FlareOfficialYellow))
         }
 
         Box(contentAlignment = Alignment.BottomEnd) {
@@ -510,7 +511,7 @@ fun InstagramNoteItem(
                     .padding(2.5.dp),
                 contentAlignment = Alignment.Center
             ) {
-                VynAvatar(avatarType = note.avatarType, size = 55.dp)
+                FlareAvatar(avatarType = note.avatarType, size = 55.dp)
             }
 
             if (note.isMe) {
@@ -545,11 +546,11 @@ fun InstagramNoteItem(
 
 /**
  * -------------------------------------------------------------
- * 3. BROADCAST CHANNEL CARD (Instagram Channels / Global)
+ * 3. BROADCAST CHANNEL CARD (FlareOfficial Channels / Global)
  * -------------------------------------------------------------
  */
 @Composable
-fun InstagramBroadcastChannelCard(
+fun FlareOfficialBroadcastChannelCard(
     onClick: () -> Unit
 ) {
     Surface(
@@ -570,7 +571,7 @@ fun InstagramBroadcastChannelCard(
                 modifier = Modifier
                     .size(46.dp)
                     .background(
-                        Brush.linearGradient(listOf(InstagramDeepPurple, InstagramPink, InstagramYellow)),
+                        Brush.linearGradient(listOf(FlareOfficialDeepPurple, FlareOfficialPink, FlareOfficialYellow)),
                         CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -589,7 +590,7 @@ fun InstagramBroadcastChannelCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "🌍 Global Live Broadcast",
+                        text = "🌐 Global Live Broadcast",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -597,14 +598,14 @@ fun InstagramBroadcastChannelCard(
                     Icon(
                         imageVector = Icons.Default.Verified,
                         contentDescription = "Verified",
-                        tint = InstagramBlue,
+                        tint = FlareOfficialBlue,
                         modifier = Modifier.size(14.dp)
                     )
                 }
                 Text(
                     text = "Join the live community stream ⚡",
                     fontSize = 12.sp,
-                    color = VynTextSecondary,
+                    color = FlareTextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -612,13 +613,13 @@ fun InstagramBroadcastChannelCard(
 
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = InstagramBlue.copy(alpha = 0.15f)
+                color = FlareOfficialBlue.copy(alpha = 0.15f)
             ) {
                 Text(
                     text = "LIVE",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = InstagramBlue,
+                    color = FlareOfficialBlue,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
@@ -628,13 +629,15 @@ fun InstagramBroadcastChannelCard(
 
 /**
  * -------------------------------------------------------------
- * 4. INSTAGRAM CONVERSATION ROW ITEM (With Long Press support & Indicators)
+ * 4. FLAREOFFICIAL CONVERSATION ROW ITEM (With Long Press support & Indicators)
  * -------------------------------------------------------------
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun InstagramConversationListItem(
+fun FlareOfficialConversationListItem(
     room: LiveChatRoom,
+    peerHandle: String = "",
+    presence: Map<String, Long> = emptyMap(),
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onCameraClick: () -> Unit,
@@ -657,7 +660,7 @@ fun InstagramConversationListItem(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // Avatar with Instagram Story ring or Live status
+            // Avatar with FlareOfficial Story ring or Live status
             Box(
                 contentAlignment = Alignment.BottomEnd,
                 modifier = Modifier.clickable { onProfileClick() }
@@ -671,23 +674,25 @@ fun InstagramConversationListItem(
                                 Modifier
                                     .border(
                                         2.dp,
-                                        Brush.linearGradient(listOf(InstagramDeepPurple, InstagramPink, InstagramYellow)),
+                                        Brush.linearGradient(listOf(FlareOfficialDeepPurple, FlareOfficialPink, FlareOfficialYellow)),
                                         CircleShape
                                     )
                                     .padding(2.5.dp)
                             } else Modifier
                         )
                 ) {
-                    VynAvatar(avatarType = room.avatarType, size = 52.dp)
+                    FlareAvatar(avatarType = room.avatarType, size = 52.dp)
                 }
 
-                // Green Active Now dot
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .background(Color(0xFF00E676), CircleShape)
-                        .border(2.5.dp, MaterialTheme.colorScheme.background, CircleShape)
-                )
+                // Green Active Now dot (only when the peer is actually online)
+                if (com.example.util.Presence.isOnline(presence[peerHandle.lowercase().trim()])) {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .background(Color(0xFF00E676), CircleShape)
+                            .border(2.5.dp, MaterialTheme.colorScheme.background, CircleShape)
+                    )
+                }
             }
 
             Column(modifier = Modifier.weight(1f)) {
@@ -699,7 +704,7 @@ fun InstagramConversationListItem(
                         Icon(
                             imageVector = Icons.Default.PushPin,
                             contentDescription = "Pinned",
-                            tint = InstagramBlue,
+                            tint = FlareOfficialBlue,
                             modifier = Modifier.size(13.dp)
                         )
                     }
@@ -717,7 +722,7 @@ fun InstagramConversationListItem(
                         Icon(
                             imageVector = Icons.Default.Verified,
                             contentDescription = "Verified",
-                            tint = InstagramBlue,
+                            tint = FlareOfficialBlue,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -726,7 +731,7 @@ fun InstagramConversationListItem(
                         Icon(
                             imageVector = Icons.Default.NotificationsOff,
                             contentDescription = "Muted",
-                            tint = VynTextSecondary,
+                            tint = FlareTextSecondary,
                             modifier = Modifier.size(13.dp)
                         )
                     }
@@ -742,7 +747,7 @@ fun InstagramConversationListItem(
                         text = room.subtitle,
                         fontSize = 13.sp,
                         fontWeight = if (room.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                        color = if (room.unreadCount > 0) MaterialTheme.colorScheme.onBackground else VynTextSecondary,
+                        color = if (room.unreadCount > 0) MaterialTheme.colorScheme.onBackground else FlareTextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
@@ -750,7 +755,7 @@ fun InstagramConversationListItem(
                     Text(
                         text = "· ${room.lastMessageTime}",
                         fontSize = 12.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
                     )
                 }
             }
@@ -765,7 +770,7 @@ fun InstagramConversationListItem(
                 Box(
                     modifier = Modifier
                         .size(9.dp)
-                        .background(InstagramBlue, CircleShape)
+                        .background(FlareOfficialBlue, CircleShape)
                 )
             }
 
@@ -776,7 +781,7 @@ fun InstagramConversationListItem(
                 Icon(
                     imageVector = Icons.Outlined.PhotoCamera,
                     contentDescription = "Snap Camera",
-                    tint = VynTextSecondary,
+                    tint = FlareTextSecondary,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -816,7 +821,7 @@ fun ChatActionBottomSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                VynAvatar(avatarType = room.avatarType, size = 52.dp)
+                FlareAvatar(avatarType = room.avatarType, size = 52.dp)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = room.title,
@@ -827,9 +832,9 @@ fun ChatActionBottomSheet(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (room.isMuted) "Notifications Muted 🔕" else room.subtitle,
+                        text = if (room.isMuted) "Notifications Muted 🔇" else room.subtitle,
                         fontSize = 13.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -845,7 +850,7 @@ fun ChatActionBottomSheet(
             ChatActionRowItem(
                 icon = if (room.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
                 title = if (room.isPinned) "Unpin chat" else "Pin to top",
-                tint = if (room.isPinned) InstagramBlue else MaterialTheme.colorScheme.onSurface,
+                tint = if (room.isPinned) FlareOfficialBlue else MaterialTheme.colorScheme.onSurface,
                 onClick = {
                     viewModel.togglePinChat(room.id)
                     onDismiss()
@@ -899,7 +904,7 @@ fun ChatActionBottomSheet(
                 icon = Icons.Outlined.Person,
                 title = "View profile",
                 onClick = {
-                    viewModel.openChatPartner(room.title)
+                    viewModel.viewUserProfile(viewModel.directPartnerHandle(room.id))
                     onDismiss()
                 }
             )
@@ -979,12 +984,12 @@ fun ChatActionRowItem(
 
 /**
  * -------------------------------------------------------------
- * 5. INSTAGRAM CONVERSATION SCREEN (1-on-1 / Group Thread)
+ * 5. FLAREOFFICIAL CONVERSATION SCREEN (1-on-1 / Group Thread)
  * -------------------------------------------------------------
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun InstagramConversationScreen(
+fun FlareOfficialConversationScreen(
     viewModel: SocialViewModel,
     modifier: Modifier = Modifier
 ) {
@@ -996,14 +1001,28 @@ fun InstagramConversationScreen(
     val showChatDetailsSheet by viewModel.showChatDetailsSheet.collectAsState()
     val roomTranslationSettings by viewModel.roomTranslationSettings.collectAsState()
     val chatTheme by viewModel.chatTheme.collectAsState()
+    val presenceByHandle by viewModel.presenceByHandle.collectAsState()
 
-    val currentRoom = availableRooms.find { it.id == activeRoomId } ?: availableRooms.firstOrNull()
+    // Only open the room that was actually selected. Falling back to the first
+    // room would silently open the WRONG conversation (e.g. when a DM room pinned
+    // from search is still being created).
+    val currentRoom = availableRooms.find { it.id == activeRoomId }
     if (currentRoom == null) {
         Box(
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier.fillMaxSize().padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text("No chat rooms available", color = VynTextSecondary)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Starting chat…",
+                    color = FlareTextSecondary,
+                    fontSize = 15.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(onClick = { viewModel.closeDirectThread() }) {
+                    Text("Go back")
+                }
+            }
         }
         return
     }
@@ -1024,6 +1043,15 @@ fun InstagramConversationScreen(
         }
     }
 
+    // When the keyboard opens/closes, keep the last message pinned right above
+    // the input box (input sits on the keyboard, last message above it).
+    val imeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(imeVisible, messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
     LaunchedEffect(activeRoomId, messages.size) {
         viewModel.markActiveRoomAsSeen()
     }
@@ -1032,12 +1060,9 @@ fun InstagramConversationScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            // Root ChatScreen Box already applies statusBarsPadding(); no double here.
-            // We use imePadding() to push the input bar up with the keyboard.
-            .imePadding()
-            .testTag("instagram_conversation_screen")
+            .testTag("flareofficial_conversation_screen")
     ) {
-        // --- TOP BAR (Instagram DM Conversation Header) ---
+        // --- TOP BAR (FlareOfficial DM Conversation Header) ---
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.background,
@@ -1073,13 +1098,18 @@ fun InstagramConversationScreen(
                             viewModel.viewUserProfile(viewModel.directPartnerHandle(currentRoom.id))
                         }
                     ) {
-                        VynAvatar(avatarType = currentRoom.avatarType, size = 38.dp)
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(Color(0xFF00E676), CircleShape)
-                                .border(1.5.dp, MaterialTheme.colorScheme.background, CircleShape)
+                        FlareAvatar(avatarType = currentRoom.avatarType, size = 38.dp)
+                        val peerOnline = com.example.util.Presence.isOnline(
+                            presenceByHandle[viewModel.directPartnerHandle(currentRoom.id).lowercase()]
                         )
+                        if (peerOnline) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .background(Color(0xFF00E676), CircleShape)
+                                    .border(1.5.dp, MaterialTheme.colorScheme.background, CircleShape)
+                            )
+                        }
                     }
 
                     Column(
@@ -1105,15 +1135,17 @@ fun InstagramConversationScreen(
                                 Icon(
                                     imageVector = Icons.Default.Verified,
                                     contentDescription = "Verified",
-                                    tint = InstagramBlue,
+                                    tint = FlareOfficialBlue,
                                     modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
                         Text(
-                            text = "Active now",
+                            text = com.example.util.Presence.label(
+                                presenceByHandle[viewModel.directPartnerHandle(currentRoom.id).lowercase()]
+                            ),
                             fontSize = 11.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                 }
@@ -1165,7 +1197,7 @@ fun InstagramConversationScreen(
                         Icon(
                             imageVector = Icons.Outlined.Info,
                             contentDescription = "Details & Settings",
-                            tint = if (isAnyTranslationOn) InstagramPink else MaterialTheme.colorScheme.onBackground,
+                            tint = if (isAnyTranslationOn) FlareOfficialPink else MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -1173,272 +1205,277 @@ fun InstagramConversationScreen(
             }
         }
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
-
-        // --- MESSAGES STREAM ---
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        // Only messages and input should be pushed by the keyboard.
+        // Union of navigation-bar and IME insets (3-button nav safe).
+        Column(
+            modifier = Modifier.weight(1f).windowInsetsPadding(
+                WindowInsets.navigationBars.union(WindowInsets.ime)
+            )
         ) {
-            // Instagram Top Profile Header Card
-            item {
-                InstagramProfileHeaderCard(
-                    room = currentRoom,
-                    onViewProfile = { viewModel.setTab(MainTab.PROFILE) }
-                )
-            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
 
-            // Message Bubbles
-            items(messages, key = { it.id }) { msg ->
-                InstagramMessageBubble(
-                    message = msg,
-                    chatTheme = chatTheme,
-                    onDoubleTapHeart = {
-                        viewModel.sendChatMessage("❤️")
-                    }
-                )
-            }
-        }
-
-        // --- TYPING STATUS ---
-        AnimatedVisibility(
-            visible = typingStatus != null,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Row(
+            // --- MESSAGES STREAM ---
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(12.dp),
-                    strokeWidth = 2.dp,
-                    color = InstagramPurple
-                )
-                Text(
-                    text = typingStatus ?: "",
-                    fontSize = 12.sp,
-                    color = InstagramPurple,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                )
-            }
-        }
+                // FlareOfficial Top Profile Header Card
+                item {
+                    FlareOfficialProfileHeaderCard(
+                        room = currentRoom,
+                        onViewProfile = { viewModel.viewUserProfile(viewModel.directPartnerHandle(currentRoom.id)) }
+                    )
+                }
 
-        // --- QUICK REACTION EMOJIS ---
-        if (showQuickEmojis) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                listOf("❤️", "🔥", "😂", "👏", "🎉", "💯", "🚀", "💎").forEach { emoji ->
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .clickable { viewModel.sendChatMessage(emoji) }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(text = emoji, fontSize = 17.sp)
-                        }
-                    }
+                // Message Bubbles
+                items(messages, key = { it.id }) { msg ->
+                    FlareOfficialMessageBubble(
+                        message = msg,
+                        chatTheme = chatTheme
+                    )
                 }
             }
-        }
 
-        // --- PER-CHAT TRANSLATION ACTIVE STATUS BANNER ---
-        AnimatedVisibility(
-            visible = isAnyTranslationOn,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Surface(
-                shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
+            // --- TYPING STATUS ---
+            AnimatedVisibility(
+                visible = typingStatus != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Translate,
-                            contentDescription = "Translation Active for this Chat",
-                            tint = InstagramPink,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        val bannerText = when {
-                            currentRoomTranslation.outgoingToEnglish && currentRoomTranslation.incomingToBangla ->
-                                "অনুবাদ চালু: বাংলা/Banglish ➔ English | English ➔ বাংলা"
-                            currentRoomTranslation.outgoingToEnglish ->
-                                "অনুবাদ চালু: পাঠানো মেসেজ ➔ English"
-                            else ->
-                                "অনুবাদ চালু: অন্যের মেসেজ ➔ বাংলা"
-                        }
-                        Text(
-                            text = bannerText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 2.dp,
+                        color = FlareOfficialPurple
+                    )
                     Text(
-                        text = "চ্যাট সেটিংস",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = InstagramBlue,
-                        modifier = Modifier
-                            .clickable { viewModel.toggleChatDetailsSheet(true) }
-                            .padding(4.dp)
+                        text = typingStatus ?: "",
+                        fontSize = 12.sp,
+                        color = FlareOfficialPurple,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                     )
                 }
             }
-        }
 
-        // --- INSTAGRAM BOTTOM COMPOSER BAR ---
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.background,
-            tonalElevation = 2.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Blue Camera snap button
-                Box(
+            // --- QUICK REACTION EMOJIS ---
+            if (showQuickEmojis) {
+                Row(
                     modifier = Modifier
-                        .size(38.dp)
-                        .background(InstagramBlue, CircleShape)
-                        .clip(CircleShape)
-                        .clickable { showMediaPicker = true },
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.CameraAlt,
-                        contentDescription = "Camera",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    listOf("❤️", "🔥", "😂", "👏", "🎉", "💯", "🚀", "💎").forEach { emoji ->
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .clickable { viewModel.sendChatMessage(emoji) }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(text = emoji, fontSize = 17.sp)
+                            }
+                        }
+                    }
                 }
+            }
 
-                // Capsule Input Container
+            // --- PER-CHAT TRANSLATION ACTIVE STATUS BANNER ---
+            AnimatedVisibility(
+                visible = isAnyTranslationOn,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.weight(1f)
+                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = inputText,
-                            onValueChange = { inputText = it },
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = "Translation Active for this Chat",
+                                tint = FlareOfficialPink,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            val bannerText = when {
+                                currentRoomTranslation.outgoingToEnglish && currentRoomTranslation.incomingToBangla ->
+                                    "অনুবাদ চালু: বাংলা/Banglish ➜ English | English ➜ বাংলা"
+                                currentRoomTranslation.outgoingToEnglish ->
+                                    "অনুবাদ চালু: পাঠানো মেসেজ ➜ English"
+                                else ->
+                                    "অনুবাদ চালু: অন্যের মেসেজ ➜ বাংলা"
+                            }
+                            Text(
+                                text = bannerText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                        Text(
+                            text = "চ্যাট সেটিংস",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = FlareOfficialBlue,
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(vertical = 8.dp)
-                                .testTag("ig_message_input_field"),
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            decorationBox = { innerTextField ->
-                                if (inputText.isEmpty()) {
-                                    Text(
-                                        text = if (isRecordingAudio) "Recording voice note..." else "Message...",
-                                        fontSize = 14.sp,
-                                        color = VynTextSecondary
+                                .clickable { viewModel.toggleChatDetailsSheet(true) }
+                                .padding(4.dp)
+                        )
+                    }
+                }
+            }
+
+            // --- FLAREOFFICIAL BOTTOM COMPOSER BAR ---
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Blue Camera snap button
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(FlareOfficialBlue, CircleShape)
+                            .clip(CircleShape)
+                            .clickable { showMediaPicker = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CameraAlt,
+                            contentDescription = "Camera",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Capsule Input Container
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = inputText,
+                                onValueChange = { inputText = it },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(vertical = 8.dp)
+                                    .testTag("ig_message_input_field"),
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                decorationBox = { innerTextField ->
+                                    if (inputText.isEmpty()) {
+                                        Text(
+                                            text = if (isRecordingAudio) "Recording voice note..." else "Message...",
+                                            fontSize = 14.sp,
+                                            color = FlareTextSecondary
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
+
+                            if (inputText.isBlank()) {
+                                IconButton(
+                                    onClick = {
+                                        isRecordingAudio = !isRecordingAudio
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isRecordingAudio) Icons.Default.GraphicEq else Icons.Outlined.Mic,
+                                        contentDescription = "Voice Note",
+                                        tint = if (isRecordingAudio) FlareOfficialPink else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
-                                innerTextField()
-                            }
-                        )
 
-                        if (inputText.isBlank()) {
-                            IconButton(
-                                onClick = {
-                                    isRecordingAudio = !isRecordingAudio
-                                },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isRecordingAudio) Icons.Default.GraphicEq else Icons.Outlined.Mic,
-                                    contentDescription = "Voice Note",
-                                    tint = if (isRecordingAudio) InstagramPink else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
+                                // Image gallery button
+                                IconButton(
+                                    onClick = { showMediaPicker = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Image,
+                                        contentDescription = "Gallery",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+
+                                // Heart Sticker Button
+                                IconButton(
+                                    onClick = { viewModel.sendChatMessage("❤️") },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = "Send Heart",
+                                        tint = FlareOfficialPink,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            } else {
+                                // Animated vibrant FlareOfficial Send button
+                                Text(
+                                    text = "Send",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = FlareOfficialBlue,
+                                    modifier = Modifier
+                                        .clickable {
+                                            viewModel.sendChatMessage(inputText)
+                                            inputText = ""
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 6.dp)
+                                        .testTag("ig_send_button")
                                 )
                             }
-
-                            // Image gallery button
-                            IconButton(
-                                onClick = { showMediaPicker = true },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Image,
-                                    contentDescription = "Gallery",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-
-                            // Heart Sticker Button
-                            IconButton(
-                                onClick = { viewModel.sendChatMessage("❤️") },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Favorite,
-                                    contentDescription = "Send Heart",
-                                    tint = InstagramPink,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        } else {
-                            // Animated vibrant Instagram Send button
-                            Text(
-                                text = "Send",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = InstagramBlue,
-                                modifier = Modifier
-                                    .clickable {
-                                        viewModel.sendChatMessage(inputText)
-                                        inputText = ""
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 6.dp)
-                                    .testTag("ig_send_button")
-                            )
                         }
                     }
                 }
@@ -1479,15 +1516,15 @@ fun InstagramConversationScreen(
         )
     }
 
-    // Instagram Chat Details & Settings Sheet ("i" button)
+    // FlareOfficial Chat Details & Settings Sheet ("i" button)
     if (showChatDetailsSheet) {
-        InstagramChatDetailsSheet(
+        FlareOfficialChatDetailsSheet(
             room = currentRoom,
             viewModel = viewModel,
             onDismiss = { viewModel.toggleChatDetailsSheet(false) },
             onOpenProfile = {
                 viewModel.toggleChatDetailsSheet(false)
-                viewModel.setTab(MainTab.PROFILE)
+                viewModel.viewUserProfile(viewModel.directPartnerHandle(currentRoom.id))
             }
         )
     }
@@ -1495,11 +1532,11 @@ fun InstagramConversationScreen(
 
 /**
  * -------------------------------------------------------------
- * 6. INSTAGRAM CHAT PROFILE HEADER CARD
+ * 6. FLAREOFFICIAL CHAT PROFILE HEADER CARD
  * -------------------------------------------------------------
  */
 @Composable
-fun InstagramProfileHeaderCard(
+fun FlareOfficialProfileHeaderCard(
     room: LiveChatRoom,
     onViewProfile: () -> Unit
 ) {
@@ -1515,12 +1552,12 @@ fun InstagramProfileHeaderCard(
                 .clip(CircleShape)
                 .border(
                     2.5.dp,
-                    Brush.linearGradient(listOf(InstagramDeepPurple, InstagramPink, InstagramYellow)),
+                    Brush.linearGradient(listOf(FlareOfficialDeepPurple, FlareOfficialPink, FlareOfficialYellow)),
                     CircleShape
                 )
                 .padding(3.dp)
         ) {
-            VynAvatar(avatarType = room.avatarType, size = 80.dp)
+            FlareAvatar(avatarType = room.avatarType, size = 80.dp)
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -1539,16 +1576,16 @@ fun InstagramProfileHeaderCard(
                 Icon(
                     imageVector = Icons.Default.Verified,
                     contentDescription = "Verified",
-                    tint = InstagramBlue,
+                    tint = FlareOfficialBlue,
                     modifier = Modifier.size(16.dp)
                 )
             }
         }
 
         Text(
-            text = "${room.title.lowercase().replace(" ", "_")} · Instagram",
+            text = "@${room.title.lowercase().replace(" ", "_")}",
             fontSize = 13.sp,
-            color = VynTextSecondary
+            color = FlareTextSecondary
         )
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -1556,7 +1593,7 @@ fun InstagramProfileHeaderCard(
         Text(
             text = "You follow each other",
             fontSize = 12.sp,
-            color = VynTextSecondary
+            color = FlareTextSecondary
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -1577,14 +1614,13 @@ fun InstagramProfileHeaderCard(
 
 /**
  * -------------------------------------------------------------
- * 7. INSTAGRAM MESSAGE BUBBLE (Gradient, Pill Styling & Translation)
+ * 7. FLAREOFFICIAL MESSAGE BUBBLE (Gradient, Pill Styling & Translation)
  * -------------------------------------------------------------
  */
 @Composable
-fun InstagramMessageBubble(
+fun FlareOfficialMessageBubble(
     message: ChatMessageEntity,
-    chatTheme: String = "Classic Instagram",
-    onDoubleTapHeart: () -> Unit
+    chatTheme: String = "Classic FlareOfficial"
 ) {
     val isMe = message.isFromMe
     var showOriginal by remember { mutableStateOf(false) }
@@ -1593,7 +1629,7 @@ fun InstagramMessageBubble(
         "Cyber Glow" -> listOf(Color(0xFF6C5CE7), Color(0xFF00CEC9))
         "Sunset Peach" -> listOf(Color(0xFFFF7675), Color(0xFFFAB1A0))
         "Emerald Mint" -> listOf(Color(0xFF00B894), Color(0xFF55EFC4))
-        else -> listOf(InstagramPurple, InstagramPink)
+        else -> listOf(Color(0xFF6A1B9A), Color(0xFFAD1457))
     }
 
     Row(
@@ -1604,7 +1640,7 @@ fun InstagramMessageBubble(
         verticalAlignment = Alignment.Bottom
     ) {
         if (!isMe) {
-            VynAvatar(avatarType = message.senderAvatar, storagePath = message.senderAvatarPath, size = 28.dp)
+            FlareAvatar(avatarType = message.senderAvatar, storagePath = message.senderAvatarPath, size = 28.dp)
             Spacer(modifier = Modifier.width(6.dp))
         }
 
@@ -1617,7 +1653,7 @@ fun InstagramMessageBubble(
                     text = message.senderName,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = VynTextSecondary,
+                    color = FlareTextSecondary,
                     modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
                 )
             }
@@ -1630,7 +1666,7 @@ fun InstagramMessageBubble(
                         bottomStart = if (isMe) 18.dp else 4.dp,
                         bottomEnd = if (isMe) 4.dp else 18.dp
                     ),
-                    color = if (isMe) Color.Transparent else InstagramDarkBubble.copy(alpha = 0.85f),
+                    color = if (isMe) Color.Transparent else FlareOfficialDarkBubble.copy(alpha = 0.85f),
                     modifier = Modifier
                         .then(
                             if (isMe) Modifier.background(
@@ -1643,23 +1679,26 @@ fun InstagramMessageBubble(
                                 )
                             ) else Modifier
                         )
-                        .clickable { onDoubleTapHeart() }
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
                         // Image attachment if available
                         if (message.mediaType == "image" && !message.mediaUrl.isNullOrBlank()) {
+                            var isExpanded by remember { mutableStateOf(false) }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(140.dp)
+                                    .animateContentSize()
+                                    .then(if (isExpanded) Modifier.fillMaxHeight(0.7f) else Modifier.height(200.dp))
                                     .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.Black.copy(alpha = 0.1f))
+                                    .clickable { isExpanded = !isExpanded }
                                     .padding(bottom = 6.dp)
                             ) {
-                                VynImage(
+                                FlareImage(
                                     imageResName = message.mediaUrl.orEmpty(),
                                     storagePath = message.storagePath,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                    contentScale = if (isExpanded) ContentScale.Fit else ContentScale.Crop
                                 )
                             }
                         }
@@ -1711,14 +1750,14 @@ fun InstagramMessageBubble(
                                 Icon(
                                     imageVector = Icons.Default.Translate,
                                     contentDescription = "Translated",
-                                    tint = if (isMe) Color.White.copy(alpha = 0.85f) else InstagramPink,
+                                    tint = if (isMe) Color.White.copy(alpha = 0.85f) else FlareOfficialPink,
                                     modifier = Modifier.size(11.dp)
                                 )
                                 Text(
-                                    text = if (message.translationLang == "BN") "অনূদিত (বাংলা)" else "Auto-Translated (EN)",
+                                    text = if (message.translationLang == "BN") "অনুদিত (বাংলা)" else "Auto-Translated (EN)",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isMe) Color.White.copy(alpha = 0.9f) else InstagramPink
+                                    color = if (isMe) Color.White.copy(alpha = 0.9f) else FlareOfficialPink
                                 )
                             }
                         }
@@ -1763,7 +1802,7 @@ fun InstagramMessageBubble(
                 }
 
                 // Heart reaction badge attached to corner of bubble
-                if (message.reactions.contains("❤️") || message.messageText == "❤️") {
+                if (message.reactions.contains("❤️")) {
                     Box(
                         modifier = Modifier
                             .offset(x = 6.dp, y = 6.dp)
@@ -1784,7 +1823,7 @@ fun InstagramMessageBubble(
                         if (message.isRead) "Seen · $displayTime" else "Sent · $displayTime"
                     } else displayTime,
                     fontSize = 10.sp,
-                    color = VynTextSecondary,
+                    color = FlareTextSecondary,
                     modifier = Modifier.padding(top = 2.dp, end = 4.dp)
                 )
         }
@@ -1793,17 +1832,17 @@ fun InstagramMessageBubble(
 
 /**
  * -------------------------------------------------------------
- * 8. INSTAGRAM VIDEO / AUDIO CALL OVERLAY
+ * 8. FLAREOFFICIAL VIDEO / AUDIO CALL OVERLAY
  * -------------------------------------------------------------
  */
 @Composable
-fun InstagramCallOverlay(
+fun FlareOfficialCallOverlay(
     call: CallState,
     onEndCall: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleCamera: () -> Unit
 ) {
-    ModernInstagramCallOverlay(
+    ModernFlareOfficialCallOverlay(
         call = call,
         onEndCall = onEndCall,
         onToggleMute = onToggleMute,
@@ -1816,12 +1855,12 @@ fun InstagramCallOverlay(
 
 /**
  * -------------------------------------------------------------
- * 9. INSTAGRAM NOTE CREATOR SHEET
+ * 9. FLAREOFFICIAL NOTE CREATOR SHEET
  * -------------------------------------------------------------
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InstagramNoteCreatorSheet(
+fun FlareOfficialNoteCreatorSheet(
     viewModel: SocialViewModel,
     onDismiss: () -> Unit
 ) {
@@ -1862,7 +1901,7 @@ fun InstagramNoteCreatorSheet(
                     },
                     enabled = noteText.isNotBlank(),
                     shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = InstagramBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = FlareOfficialBlue)
                 ) {
                     Text("Share", fontWeight = FontWeight.Bold)
                 }
@@ -1884,7 +1923,7 @@ fun InstagramNoteCreatorSheet(
                     Text(
                         text = noteText.ifBlank { "Share what's on your mind..." },
                         fontSize = 14.sp,
-                        color = if (noteText.isBlank()) VynTextSecondary else MaterialTheme.colorScheme.onSurface,
+                        color = if (noteText.isBlank()) FlareTextSecondary else MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center
                     )
                     if (selectedMusic != null) {
@@ -1896,13 +1935,13 @@ fun InstagramNoteCreatorSheet(
                             Icon(
                                 imageVector = Icons.Default.MusicNote,
                                 contentDescription = null,
-                                tint = InstagramPink,
+                                tint = FlareOfficialPink,
                                 modifier = Modifier.size(12.dp)
                             )
                             Text(
                                 text = selectedMusic ?: "",
                                 fontSize = 10.sp,
-                                color = InstagramPink
+                                color = FlareOfficialPink
                             )
                         }
                     }
@@ -1911,7 +1950,7 @@ fun InstagramNoteCreatorSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            VynAvatar(avatarType = profile.avatarType, size = 76.dp)
+            FlareAvatar(avatarType = profile.avatarType, size = 76.dp)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -1935,8 +1974,8 @@ fun InstagramNoteCreatorSheet(
                     val isSelected = selectedMusic == track
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (isSelected) InstagramPink.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = if (isSelected) BorderStroke(1.dp, InstagramPink) else null,
+                        color = if (isSelected) FlareOfficialPink.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = if (isSelected) BorderStroke(1.dp, FlareOfficialPink) else null,
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
                             .clickable { selectedMusic = if (isSelected) null else track }
@@ -1945,7 +1984,7 @@ fun InstagramNoteCreatorSheet(
                             text = track,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
-                            color = if (isSelected) InstagramPink else MaterialTheme.colorScheme.onSurface,
+                            color = if (isSelected) FlareOfficialPink else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
                     }
@@ -1959,12 +1998,12 @@ fun InstagramNoteCreatorSheet(
 
 /**
  * -------------------------------------------------------------
- * 10. INSTAGRAM NEW MESSAGE SHEET
+ * 10. FLAREOFFICIAL NEW MESSAGE SHEET
  * -------------------------------------------------------------
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InstagramNewMessageSheet(
+fun FlareOfficialNewMessageSheet(
     viewModel: SocialViewModel,
     onDismiss: () -> Unit
 ) {
@@ -2021,7 +2060,7 @@ fun InstagramNewMessageSheet(
                     text = if (query.isBlank()) "Suggested Friends" else "Search Results",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
                 if (searchLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
@@ -2051,7 +2090,11 @@ fun InstagramNewMessageSheet(
                             .fillMaxWidth()
                             .clickable {
                                 onDismiss()
-                                viewModel.openDirectThread("dm_${member.handle}")
+                                if (member.handle.equals(viewModel.profile.value.handle, ignoreCase = true)) {
+                                    viewModel.setTab(MainTab.PROFILE)
+                                } else {
+                                    viewModel.openUserProfileFromSearch(member)
+                                }
                             }
                     ) {
                         Row(
@@ -2065,7 +2108,7 @@ fun InstagramNewMessageSheet(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                VynAvatar(avatarType = member.avatarType, size = 42.dp)
+                                FlareAvatar(avatarType = member.avatarType, size = 42.dp)
                                 Column {
                                     Text(
                                         text = member.name,
@@ -2076,7 +2119,7 @@ fun InstagramNewMessageSheet(
                                     Text(
                                         text = "@${member.handle}",
                                         fontSize = 12.sp,
-                                        color = VynTextSecondary
+                                        color = FlareTextSecondary
                                     )
                                 }
                             }
@@ -2087,7 +2130,7 @@ fun InstagramNewMessageSheet(
                                     viewModel.openDirectThread("dm_${member.handle}")
                                 },
                                 shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = InstagramBlue),
+                                colors = ButtonDefaults.buttonColors(containerColor = FlareOfficialBlue),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
                             ) {
                                 Text("Chat", fontSize = 12.sp, fontWeight = FontWeight.Bold)

@@ -26,10 +26,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.model.PostEntity
-import com.example.ui.components.VynAvatar
-import com.example.ui.components.VynImage
-import com.example.ui.theme.VynButtonBg
-import com.example.ui.theme.VynTextSecondary
+import com.example.ui.components.FlareAvatar
+import com.example.ui.components.FlareImage
+import com.example.ui.theme.FlareButtonBg
+import com.example.ui.theme.FlareTextSecondary
+import com.example.ui.viewmodel.MainTab
 import com.example.ui.viewmodel.SocialViewModel
 
 @Composable
@@ -47,11 +48,13 @@ fun ExploreScreen(
     var selectedPhoto by remember { mutableStateOf<PostEntity?>(null) }
 
     // Real trending hashtags derived from the local feed (posts), most frequent first.
+    // NOTE: only actual "#tag" occurrences count — we do NOT prepend "#" to captions,
+    // and we never fabricate fake fallback tags.
     val trendingTags = remember(posts) {
         val counted = mutableMapOf<String, Int>()
+        val tagRegex = Regex("#\\p{L}[\\p{L}\\p{N}_]*")
         for (post in posts) {
-            val normalized = "#" + post.caption
-            Regex("#\\p{L}[\\p{L}\\p{N}_]*").findAll(normalized).forEach { m ->
+            tagRegex.findAll(post.caption).forEach { m ->
                 val tag = m.value.lowercase()
                 counted[tag] = (counted[tag] ?: 0) + 1
             }
@@ -60,15 +63,17 @@ fun ExploreScreen(
             .sortedByDescending { it.value }
             .take(6)
             .map { it.key }
-            .ifEmpty { listOf("#vyn9", "#friends", "#newpost") }
     }
 
+    // Adaptive bottom padding: clears both the bottom bar and the system
+    // navigation area (button navigation adds extra height) on any device.
+    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding()
             .testTag("explore_screen_list"),
-        contentPadding = PaddingValues(bottom = 90.dp, top = 20.dp)
+        contentPadding = PaddingValues(bottom = bottomInset + 96.dp, top = 20.dp)
     ) {
         // Search Bar
         item {
@@ -95,9 +100,10 @@ fun ExploreScreen(
             )
         }
 
-        // Trending Tags
-        item {
-            LazyRow(
+        // Trending Tags (hidden when no real hashtags exist in the feed)
+        if (trendingTags.isNotEmpty()) {
+            item {
+                LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 6.dp),
@@ -112,17 +118,19 @@ fun ExploreScreen(
                         },
                         label = { Text(tag, fontWeight = FontWeight.Medium) },
                         colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = VynButtonBg
+                            containerColor = FlareButtonBg
                         ),
                         shape = RoundedCornerShape(16.dp)
                     )
                 }
             }
+            }
         }
 
-        // Suggested people to follow
+        // Suggested people to follow (shows ALL connections so the Follow button
+        // can toggle in place to "Unfollow" without any rows jumping around)
         item {
-            val suggestions = connections.filter { !it.isFollowing }
+            val suggestions = connections
 
             if (suggestions.isNotEmpty()) {
                 Text(
@@ -148,7 +156,7 @@ fun ExploreScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Box {
-                                VynAvatar(avatarType = friend.avatarType, storagePath = friend.avatarPath, size = 46.dp)
+                                FlareAvatar(avatarType = friend.avatarType, storagePath = friend.avatarPath, size = 46.dp)
                                 if (friend.isOnline) {
                                     Box(
                                         modifier = Modifier
@@ -169,7 +177,7 @@ fun ExploreScreen(
                                 Text(
                                     text = if (friend.isFollower) "Follows you · ${friend.mutualFriendsCount} mutual friends" else "@${friend.handle} · ${friend.bio}",
                                     fontSize = 12.sp,
-                                    color = if (friend.isFollower) Color(0xFFE67E22) else VynTextSecondary,
+                                    color = if (friend.isFollower) Color(0xFFE67E22) else FlareTextSecondary,
                                     maxLines = 1
                                 )
                             }
@@ -178,15 +186,15 @@ fun ExploreScreen(
                         Button(
                             onClick = { viewModel.toggleFollow(friend.id) },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                containerColor = if (friend.isFollowing) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                                contentColor = if (friend.isFollowing) FlareTextSecondary else MaterialTheme.colorScheme.onPrimary
                             ),
                             shape = RoundedCornerShape(16.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                             modifier = Modifier.height(34.dp)
                         ) {
                             Text(
-                                text = if (friend.isFollower) "Follow Back 🤝" else "Follow",
+                                text = if (friend.isFollowing) "Unfollow" else "Follow",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -253,46 +261,62 @@ fun ExploreScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { viewModel.openDirectChatWithUser(user) }
+                        .clickable {
+                            if (isSelf) viewModel.setTab(MainTab.PROFILE)
+                            else viewModel.openUserProfileFromSearch(user)
+                        }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    VynAvatar(avatarType = user.avatarType, storagePath = user.avatarPath, size = 46.dp)
+                    FlareAvatar(avatarType = user.avatarType, storagePath = user.avatarPath, size = 46.dp)
                     Column(modifier = Modifier.weight(1f)) {
                         Text(user.name, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Text(
                             text = if (followsMe && !amFollowing) "@${user.handle} · Follows you" else "@${user.handle}",
                             fontSize = 12.sp,
-                            color = if (followsMe && !amFollowing) Color(0xFFE67E22) else VynTextSecondary
+                            color = if (followsMe && !amFollowing) Color(0xFFE67E22) else FlareTextSecondary
                         )
                         if (user.bio.isNotBlank() && !followsMe) {
-                            Text(user.bio, fontSize = 12.sp, color = VynTextSecondary, maxLines = 1)
+                            Text(user.bio, fontSize = 12.sp, color = FlareTextSecondary, maxLines = 1)
                         }
                     }
                     if (!isSelf) {
+                        // Follow/Unfollow button FIRST (toggles in place, no screen jump)
                         Button(
-                            onClick = { viewModel.followUserFromSearch(user) },
-                            enabled = !amFollowing,
+                            onClick = { viewModel.toggleFollowFromSearch(user) },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (followsMe && !amFollowing) Color(0xFF6C5CE7) else MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                disabledContentColor = VynTextSecondary
+                                containerColor = if (amFollowing) MaterialTheme.colorScheme.surfaceVariant
+                                    else if (followsMe) Color(0xFF6C5CE7) else MaterialTheme.colorScheme.primary,
+                                contentColor = if (amFollowing) FlareTextSecondary else MaterialTheme.colorScheme.onPrimary
                             ),
                             shape = RoundedCornerShape(16.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                             modifier = Modifier.height(34.dp)
                         ) {
                             Text(
-                                text = if (amFollowing) "Following ✓" else if (followsMe) "Follow Back 🤝" else "Follow +",
+                                text = if (amFollowing) "Unfollow" else if (followsMe) "Follow Back 🤝" else "Follow",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                    }
-                    TextButton(onClick = { viewModel.openDirectChatWithUser(user) }) {
-                        Text("Chat")
+                        // Chat button SECOND (opens a DM with this user)
+                        Button(
+                            onClick = { viewModel.openDirectChatWithUser(user) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Text(
+                                text = "Chat",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -328,9 +352,9 @@ fun ExploreScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         if (hasThumb) {
-                            VynImage(
+                            FlareImage(
                                 imageResName = post.postImageRes,
-                                storagePath = post.storagePath,
+                                storagePath = post.thumbnailPath ?: post.storagePath,
                                 modifier = Modifier
                                     .size(56.dp)
                                     .clip(RoundedCornerShape(8.dp))
@@ -338,7 +362,7 @@ fun ExploreScreen(
                         }
                         Column {
                             Text(post.username, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("@${post.userHandle}", fontSize = 12.sp, color = VynTextSecondary)
+                            Text("@${post.userHandle}", fontSize = 12.sp, color = FlareTextSecondary)
                             if (post.caption.isNotBlank()) {
                                 Text(post.caption, fontSize = 13.sp, maxLines = 2)
                             }
@@ -362,7 +386,8 @@ fun ExploreScreen(
         val explorePhotos = posts.filter {
             it.postImageRes.isNotBlank() &&
                     it.postImageRes != "default" &&
-                    !it.postImageRes.startsWith("img_")
+                    !it.postImageRes.startsWith("img_") &&
+                    !com.example.util.MediaStorageResolver.isBrokenLegacyB2(it.postImageRes, it.storagePath)
         }
         if (explorePhotos.isEmpty()) {
             item {
@@ -393,9 +418,9 @@ fun ExploreScreen(
                                         .clickable { selectedPhoto = post },
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    VynImage(
+                                    FlareImage(
                                         imageResName = post.postImageRes,
-                                        storagePath = post.storagePath,
+                                        storagePath = post.thumbnailPath ?: post.storagePath,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .aspectRatio(1f)
@@ -426,9 +451,9 @@ fun ExploreScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    VynImage(
+                    FlareImage(
                         imageResName = photo.postImageRes,
-                        storagePath = photo.storagePath,
+                        storagePath = photo.thumbnailPath ?: photo.storagePath,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
@@ -453,59 +478,3 @@ fun ExploreScreen(
     }
 }
 
-@Composable
-fun SuggestedUserRow(
-    name: String,
-    handle: String,
-    avatar: String,
-    avatarPath: String? = null,
-    bio: String,
-    modifier: Modifier = Modifier
-) {
-    var isFollowing by remember { mutableStateOf(false) }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            VynAvatar(avatarType = avatar, storagePath = avatarPath, size = 44.dp)
-            Column {
-                Text(
-                    text = name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "@$handle · $bio",
-                    fontSize = 12.sp,
-                    color = VynTextSecondary
-                )
-            }
-        }
-
-        Button(
-            onClick = { isFollowing = !isFollowing },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isFollowing) VynButtonBg else MaterialTheme.colorScheme.primary,
-                contentColor = if (isFollowing) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
-            ),
-            shape = RoundedCornerShape(8.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-            modifier = Modifier.height(34.dp)
-        ) {
-            Text(
-                text = if (isFollowing) "Following" else "Follow",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}

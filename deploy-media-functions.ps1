@@ -1,5 +1,5 @@
 # =====================================================================
-# Vyn9 — Secure Media Gateway Deployment Script
+# FlareOfficial — Secure Media Gateway Deployment Script
 # Deploys the B2 upload/download Edge Functions to your Supabase project.
 #
 # USAGE (run once from anywhere):
@@ -12,7 +12,7 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
-Write-Host "== Vyn9 secure media gateway deployment ==" -ForegroundColor Cyan
+Write-Host "== FlareOfficial secure media gateway deployment ==" -ForegroundColor Cyan
 
 # 0. Sanity check
 if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
@@ -41,7 +41,7 @@ if ($LASTEXITCODE -ne 0) { Write-Error "b2-delete deploy failed"; exit 1 }
 
 # 4. Smoke test: b2-download must exist and reject an unauthenticated probe
 Write-Host "`n[4/4] Smoke testing b2-download..." -ForegroundColor Yellow
-$outFile = Join-Path $env:TEMP "vyn9_b2_download_probe.json"
+$outFile = Join-Path $env:TEMP "flareofficial_b2_download_probe.json"
 $code = & curl.exe -s -o $outFile -w "%{http_code}" --max-time 30 `
     "https://crlrjkpoxlkbpjfqnyyr.supabase.co/functions/v1/b2-download?path=users/probe/profile/x.jpg"
 $body = ""

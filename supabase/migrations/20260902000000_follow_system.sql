@@ -1,4 +1,4 @@
--- VYN9 Follow System: notify the followed user + follow notifications
+-- FLAREOFFICIAL Follow System: notify the followed user + follow notifications
 -- 1. SECURITY DEFINER RPC so the follower can insert a notification row
 --    addressed to the followed user (RLS would otherwise block cross-user inserts).
 CREATE OR REPLACE FUNCTION public.vn_follow_notify(p_target_handle TEXT, p_action TEXT)

@@ -23,7 +23,7 @@ class GreetingScreenshotTest {
   fun greeting_screenshot() {
     composeTestRule.setContent {
       MyApplicationTheme {
-        com.example.ui.components.VynTopBar()
+        com.example.ui.components.FlareTopBar()
       }
     }
 

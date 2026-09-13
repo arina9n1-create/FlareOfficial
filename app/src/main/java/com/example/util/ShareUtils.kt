@@ -8,16 +8,16 @@ object ShareUtils {
 
     fun shareProfile(context: Context, handle: String) {
         val url = "${Backend.BASE_WEB_URL}/@$handle"
-        val text = "Check out @$handle on Vyn9\n$url"
+        val text = "Check out @$handle on FlareOfficial\n$url"
         launchShareIntent(context, text)
     }
 
     fun sharePost(context: Context, remoteId: String, caption: String?) {
         val url = "${Backend.BASE_WEB_URL}/post/$remoteId"
         val text = if (!caption.isNullOrBlank()) {
-            "$caption\n\nView this on Vyn9:\n$url"
+            "$caption\n\nView this on FlareOfficial:\n$url"
         } else {
-            "View this post on Vyn9:\n$url"
+            "View this post on FlareOfficial:\n$url"
         }
         launchShareIntent(context, text)
     }
@@ -25,22 +25,22 @@ object ShareUtils {
     fun shareReel(context: Context, remoteId: String, caption: String?) {
         val url = "${Backend.BASE_WEB_URL}/reel/$remoteId"
         val text = if (!caption.isNullOrBlank()) {
-            "Watch this reel by @${caption.substringAfter("@").substringBefore(" ")} on Vyn9:\n$url"
+            "Watch this reel by @${caption.substringAfter("@").substringBefore(" ")} on FlareOfficial:\n$url"
         } else {
-            "Watch this reel on Vyn9:\n$url"
+            "Watch this reel on FlareOfficial:\n$url"
         }
         // Note: Reels in this project seem to have a different caption structure. 
         // I'll refine the reel share text to be more generic if handle isn't easily extractable.
-        val finalReelText = "Watch this reel on Vyn9:\n$url"
+        val finalReelText = "Watch this reel on FlareOfficial:\n$url"
         launchShareIntent(context, finalReelText)
     }
 
     fun shareVideo(context: Context, videoId: String, title: String?) {
         val url = "${Backend.BASE_WEB_URL}/video/$videoId"
         val text = if (!title.isNullOrBlank()) {
-            "$title\n\nWatch this on Vyn9:\n$url"
+            "$title\n\nWatch this on FlareOfficial:\n$url"
         } else {
-            "Watch this video on Vyn9:\n$url"
+            "Watch this video on FlareOfficial:\n$url"
         }
         launchShareIntent(context, text)
     }

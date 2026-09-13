@@ -71,7 +71,7 @@ data class MonetizationApplication(
 /**
  * Real-money Earnings Wallet for creators
  * IMPORTANT: Add Fund money does NOT increase Lifetime Earnings.
- * Lifetime Earnings represents only money earned through Vyn9 monetization systems.
+ * Lifetime Earnings represents only money earned through FlareOfficial monetization systems.
  */
 data class EarningsWallet(
     val userId: String = "",
@@ -129,7 +129,7 @@ data class AdMobRevenueReport(
     val id: String = UUID.randomUUID().toString(),
     val revenuePeriodId: String,
     val reportDate: String,
-    val appId: String = "ca-app-pub-vyn9-prod",
+    val appId: String = "ca-app-pub-flareofficial-prod",
     val adUnitId: String,
     val adFormat: String, // "NATIVE", "BANNER", "INTERSTITIAL", "REWARDED"
     val countryCode: String = "GLOBAL",
@@ -142,7 +142,7 @@ data class AdMobRevenueReport(
 )
 
 /**
- * Configurable AdMob Ad Unit Mapping to Vyn9 Placements & Content Types
+ * Configurable AdMob Ad Unit Mapping to FlareOfficial Placements & Content Types
  */
 data class AdMobAdUnitMapping(
     val id: String = UUID.randomUUID().toString(),

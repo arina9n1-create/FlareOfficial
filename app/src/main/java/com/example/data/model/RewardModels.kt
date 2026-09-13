@@ -121,6 +121,7 @@ data class AdminConfig(
     val creditsPerDollar: Int = 2000,
     val usdToBdtRate: Double = 120.0, // 1 USD = 120.0 BDT (Admin editable)
     val minWithdrawalUSD: Double = 1.0,
+    val verificationBadgeFeeUSD: Double = 4.99, // Cost of the Verification Badge (Super Admin editable)
     val isBkashEnabled: Boolean = true,
     val isNagadEnabled: Boolean = true,
     val isRocketEnabled: Boolean = true,
@@ -148,7 +149,7 @@ data class UserRewardWallet(
     val todayReelsUploaded: Int = 0,
     val totalReelsWatched: Int = 0,
     val totalReelsUploaded: Int = 0,
-    val referralCode: String = "VYN9WIN",
+    val referralCode: String = "FLAREOFFICIALWIN",
     val referredUsersCount: Int = 0,
     val referralEarnings: Int = 0,
     val pendingReferralEarnings: Int = 0,
@@ -157,6 +158,111 @@ data class UserRewardWallet(
     val accountAgeDays: Int = 1,
     val currentStreakDay: Int = 1,
     val lastLoginDate: String = "",
-    val referredByCode: String = ""
+    val referredByCode: String = "",
+    // ---- Professional wallet balances (server-authoritative; kept separate) ----
+    val withdrawableCredits: Int = 0,          // the user's spendable / redeemable earning wallet
+    val pendingWithdrawalCredits: Int = 0,     // reserved by an in-flight withdrawal (not spendable)
+    val totalEarnedCredits: Int = 0,           // lifetime earned (excludes rejected/invalid)
+    val referralCredits: Int = 0,              // un-redeemed refer & earn credits
+    val watchCredits: Int = 0,                 // un-redeemed watch & earn credits
+    val challengeCredits: Int = 0,             // un-claimed new-user challenge credits
+    val referralRedeemedCredits: Int = 0,
+    val watchRedeemedCredits: Int = 0,
+    val challengeRedeemedCredits: Int = 0,
+    val pendingWatchCredits: Int = 0           // watch rewards awaiting verification
+)
+
+/** One immutable row of wallet_transactions. */
+data class WalletTransaction(
+    val id: String = "",
+    val userHandle: String = "",
+    val txType: String = "REFERRAL",            // REFERRAL / WATCH / CHALLENGE / REDEEM / WITHDRAWAL / WITHDRAWAL_REFUND / MANUAL_ADD / MANUAL_REMOVE / BONUS
+    val source: String = "",
+    val coinAmount: Int = 0,                    // signed (+ earned/redeemed, - withdrawn)
+    val monetaryAmount: Double = 0.0,
+    val currency: String = "USD",
+    val status: String = "COMPLETED",           // COMPLETED / PENDING / PROCESSING / PAID / REJECTED / CANCELLED
+    val creditOrDebit: String = "CREDIT",       // CREDIT / DEBIT
+    val reference: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** Administrative wallet/reward action (wallet_audit_log). */
+data class WalletAuditLog(
+    val id: String = "",
+    val adminHandle: String = "",
+    val targetHandle: String = "",
+    val action: String = "",
+    val fieldName: String = "",
+    val previousValue: String = "",
+    val newValue: String = "",
+    val reference: String = "",
+    val reason: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** Suspicious / fraudulent reward activity flag (wallet_fraud_flags). */
+data class WalletFraudFlag(
+    val id: String = "",
+    val userHandle: String = "",
+    val flagType: String = "",
+    val severity: String = "LOW",               // LOW / MEDIUM / HIGH
+    val description: String = "",
+    val resolved: Boolean = false,
+    val resolvedBy: String = "",
+    val resolvedAt: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** Aggregated per-user wallet summary returned by wallet_summary RPC. */
+data class WalletSummary(
+    val userHandle: String = "",
+    val withdrawableCredits: Int = 0,
+    val withdrawableUsd: Double = 0.0,
+    val withdrawableBdt: Double = 0.0,
+    val pendingWithdrawalCredits: Int = 0,
+    val pendingWithdrawalUsd: Double = 0.0,
+    val totalEarnedCredits: Int = 0,
+    val referralCredits: Int = 0,
+    val watchCredits: Int = 0,
+    val challengeCredits: Int = 0,
+    val referralRedeemedCredits: Int = 0,
+    val watchRedeemedCredits: Int = 0,
+    val challengeRedeemedCredits: Int = 0,
+    val totalCredits: Int = 0,
+    val creditsPerDollar: Int = 2000,
+    val usdToBdt: Double = 0.005,
+    val loading: Boolean = false,
+    val error: String = ""
+)
+
+/** Platform-wide wallet overview from admin_wallet_overview RPC. */
+data class PlatformWalletOverview(
+    val totalPlatformCoins: Int = 0,
+    val totalCoinsEarnedByUsers: Int = 0,
+    val totalCoinsRedeemed: Int = 0,
+    val totalWithdrawnAmountUsd: Double = 0.0,
+    val pendingPayoutAmountUsd: Double = 0.0,
+    val totalPaidPayoutsUsd: Double = 0.0,
+    val pendingPayoutCount: Int = 0,
+    val todayEarnedCoins: Int = 0,
+    val yesterdayEarnedCoins: Int = 0,
+    val todayWithdrawnUsd: Double = 0.0,
+    val yesterdayWithdrawnUsd: Double = 0.0,
+    val loading: Boolean = false,
+    val error: String = ""
+)
+
+/** One row of the admin user-earnings overview. */
+data class UserEarningsOverview(
+    val userHandle: String = "",
+    val name: String = "",
+    val totalEarned: Int = 0,
+    val referralCredits: Int = 0,
+    val watchCredits: Int = 0,
+    val challengeCredits: Int = 0,
+    val redeemed: Int = 0,
+    val withdrawn: Int = 0,
+    val withdrawable: Int = 0
 )
 

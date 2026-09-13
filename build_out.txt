@@ -1,0 +1,40 @@
+Starting a Gradle Daemon, 1 busy and 1 incompatible and 1 stopped Daemons could not be reused, use --status for details
+Reusing configuration cache.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:processDebugGoogleServices UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:kspDebugKotlin UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/data/notification/FlareFirebaseMessagingService.kt:22:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/data/notification/FlareFirebaseMessagingService.kt:23:15 'fun onNewToken(p0: String): Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/data/notification/FlareFirebaseMessagingService.kt:248:18 'val token: Task<String!>' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/data/notification/FlareFirebaseMessagingService.kt:430:13 'fun stopForeground(p0: Boolean): Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/data/notification/FlareFirebaseMessagingService.kt:437:13 'fun stopForeground(p0: Boolean): Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/DialogsAndSheets.kt:68:57 'static field SOFT_INPUT_ADJUST_RESIZE: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/FlareNumberScreens.kt:1209:38 'val Icons.Filled.VolumeOff: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeOff.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/FlareNumberScreens.kt:1213:53 'val Icons.Filled.Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/IncomingCallActivity.kt:37:44 'static field FLAG_SHOW_WHEN_LOCKED: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/IncomingCallActivity.kt:38:44 'static field FLAG_TURN_SCREEN_ON: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/ModerationCenter.kt:569:32 'val Icons.Filled.KeyboardArrowLeft: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.KeyboardArrowLeft.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/ModerationCenter.kt:575:32 'val Icons.Filled.KeyboardArrowRight: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.KeyboardArrowRight.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/ModerationCenter.kt:957:53 'val Icons.Outlined.FactCheck: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.FactCheck.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/ModerationCenter.kt:1090:49 'val Icons.Outlined.Undo: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Undo.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/PersonalIdScreens.kt:562:27 'val Icons.Filled.FactCheck: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.FactCheck.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/PersonalIdScreens.kt:617:27 'val Icons.Filled.Logout: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Logout.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/PersonalIdScreens.kt:1091:39 'val Icons.Filled.InsertDriveFile: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.InsertDriveFile.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/PersonalIdScreens.kt:1493:27 'val Icons.Filled.KeyboardArrowRight: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.KeyboardArrowRight.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/PersonalIdScreens.kt:1590:47 'val Icons.Filled.InsertDriveFile: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.InsertDriveFile.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/SettingsScreen.kt:1916:52 'val Icons.Filled.CallMade: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.CallMade.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/WalletScreen.kt:248:102 'val Icons.Filled.ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ReceiptLong.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/WalletScreen.kt:257:45 'val Icons.Outlined.ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong.
+w: file:///C:/Users/Feelings%20Of%20Hearts/AndroidStudioProjects/version9/app/src/main/java/com/example/ui/screens/WalletScreen.kt:545:45 'val Icons.Outlined.ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong.
+
+BUILD SUCCESSFUL in 3m 31s
+9 actionable tasks: 1 executed, 8 up-to-date
+Configuration cache entry reused.

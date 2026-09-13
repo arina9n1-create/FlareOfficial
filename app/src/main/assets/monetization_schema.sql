@@ -1,5 +1,5 @@
 -- ==============================================================================
--- VYN9 NATIVE MONETIZATION & CREATOR REVENUE ATTRIBUTION SYSTEM
+-- FLAREOFFICIAL NATIVE MONETIZATION & CREATOR REVENUE ATTRIBUTION SYSTEM
 -- SUPABASE / POSTGRESQL AUTHORITATIVE SCHEMA & RLS POLICIES (PHASE 1 + PHASE 2)
 -- ==============================================================================
 
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS public.admob_revenue_reports (
     id TEXT PRIMARY KEY,
     revenue_period_id TEXT NOT NULL REFERENCES public.revenue_periods(id) ON DELETE CASCADE,
     report_date DATE NOT NULL,
-    app_id TEXT NOT NULL DEFAULT 'ca-app-pub-vyn9-prod',
+    app_id TEXT NOT NULL DEFAULT 'ca-app-pub-flareofficial-prod',
     ad_unit_id TEXT NOT NULL,
     ad_format TEXT NOT NULL, -- 'NATIVE', 'BANNER', 'INTERSTITIAL', 'REWARDED'
     country_code TEXT NOT NULL DEFAULT 'GLOBAL',

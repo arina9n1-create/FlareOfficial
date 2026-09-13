@@ -7,6 +7,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,183 +39,11 @@ import com.example.data.model.NotificationEntity
 import com.example.data.model.PostEntity
 import com.example.data.model.StoryEntity
 import com.example.data.model.UserProfileEntity
-import com.example.ui.components.VynAvatar
-import com.example.ui.components.VynImage
+import com.example.ui.components.FlareAvatar
+import com.example.ui.components.FlareImage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.SocialViewModel
 import kotlinx.coroutines.delay
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CreatePostBottomSheet(
-    viewModel: SocialViewModel,
-    onDismiss: () -> Unit
-) {
-    var caption by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf("post") } // "post", "cover", "profile", "story"
-    var selectedImage by remember { mutableStateOf<String?>(null) }
-    var customUriString by remember { mutableStateOf<String?>(null) }
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            customUriString = it.toString()
-            selectedImage = it.toString()
-        }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .testTag("create_post_bottom_sheet"),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = "Create New Content",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            // Post type selector tabs
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(
-                    "post" to "New Post",
-                    "story" to "Add Story",
-                    "cover" to "Cover Photo",
-                    "profile" to "Profile Pic"
-                ).forEach { (type, label) ->
-                    FilterChip(
-                        selected = selectedType == type,
-                        onClick = { selectedType = type },
-                        label = { Text(label, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    )
-                }
-            }
-
-            // Image selection header & Gallery pick button
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Select or Upload Photo:", fontSize = 13.sp, color = VynTextSecondary)
-                OutlinedButton(
-                    onClick = { galleryLauncher.launch("image/*") },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery", modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("From Gallery", fontSize = 12.sp)
-                }
-            }
-
-            // Image selection preview row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                customUriString?.let { uri ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedImage = uri }
-                    ) {
-                        VynImage(
-                            imageResName = uri,
-                            modifier = Modifier
-                                .height(70.dp)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .then(
-                                    if (selectedImage == uri) {
-                                        Modifier.background(VynCameraBlue).padding(2.dp)
-                                    } else Modifier
-                                )
-                        )
-                        Text("Gallery Photo", fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-
-            }
-
-            OutlinedTextField(
-                value = caption,
-                onValueChange = { caption = it },
-                placeholder = { 
-                    Text(
-                        when (selectedType) {
-                            "story" -> "Add a story caption..."
-                            "cover" -> "Say something about your new cover..."
-                            "profile" -> "Say something about your new avatar..."
-                            else -> "What's on your mind?"
-                        }
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-                    .testTag("create_post_caption_input"),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Button(
-                onClick = {
-                    val image = selectedImage
-                    when (selectedType) {
-                        "story" -> {
-                            if (image == null) return@Button
-                            viewModel.addStory(image, caption)
-                        }
-                        "cover" -> {
-                            if (image == null) return@Button
-                            viewModel.changeCoverPhoto(image)
-                        }
-                        "profile" -> {
-                            if (image == null) return@Button
-                            viewModel.changeProfilePhoto(image)
-                        }
-                        else -> {
-                            viewModel.createPost(caption, selectedType, image.orEmpty())
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("publish_post_button"),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = when (selectedType) {
-                        "story" -> "Add to Your Story 📖"
-                        "cover" -> "Update Cover Photo 🖼️"
-                        "profile" -> "Update Profile Picture 👤"
-                        else -> "Share to Vyn9 ✨"
-                    },
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
 
 @Composable
 fun EditProfileDialog(
@@ -225,52 +55,79 @@ fun EditProfileDialog(
     var bio by remember { mutableStateOf(profile.bio) }
     var location by remember { mutableStateOf(profile.location) }
 
-    AlertDialog(
+    // Custom Dialog: force SOFT_INPUT_ADJUST_RESIZE on the dialog window (at runtime)
+    // so the dialog shrinks when the keyboard opens — the focused field stays visible.
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
-        text = {
+        properties = DialogProperties(usePlatformDefaultWidth = true)
+    ) {
+        val dialogWindow = (androidx.compose.ui.platform.LocalView.current.parent
+                as? androidx.compose.ui.window.DialogWindowProvider)?.window
+        androidx.compose.runtime.SideEffect {
+            dialogWindow?.setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            )
+        }
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("edit_profile_dialog_content"),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(20.dp)
+                    .testTag("edit_profile_dialog_content")
             ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Full Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = bio,
-                    onValueChange = { bio = it },
-                    label = { Text("Bio") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = location,
-                    onValueChange = { location = it },
-                    label = { Text("Location") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onSave(name, bio, location) },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) {
-                Text("Save Changes")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Edit Profile", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(16.dp))
+                // Scrollable fields: whatever box the user taps is reachable above the keyboard
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Full Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = bio,
+                        onValueChange = { bio = it },
+                        label = { Text("Bio") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = location,
+                        onValueChange = { location = it },
+                        label = { Text("Location") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel")
+                    }
+                    Button(
+                        onClick = { onSave(name, bio, location) },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Save Changes")
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -291,6 +148,7 @@ fun CommentsBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(450.dp)
+                .imePadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .testTag("comments_bottom_sheet")
         ) {
@@ -313,7 +171,7 @@ fun CommentsBottomSheet(
                         Text(
                             text = "No comments yet. Be the first to comment!",
                             fontSize = 13.sp,
-                            color = VynTextSecondary,
+                            color = FlareTextSecondary,
                             modifier = Modifier.padding(vertical = 20.dp)
                         )
                     }
@@ -323,7 +181,7 @@ fun CommentsBottomSheet(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        VynAvatar(avatarType = comment.userAvatarType, storagePath = comment.userAvatarPath, size = 36.dp)
+                        FlareAvatar(avatarType = comment.userAvatarType, storagePath = comment.userAvatarPath, size = 36.dp)
                         Column {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -337,7 +195,7 @@ fun CommentsBottomSheet(
                                 Text(
                                     text = comment.timeAgo,
                                     fontSize = 11.sp,
-                                    color = VynTextSecondary
+                                    color = FlareTextSecondary
                                 )
                             }
                             Text(
@@ -369,7 +227,7 @@ fun CommentsBottomSheet(
                 IconButton(
                     onClick = {
                         if (commentText.isNotBlank()) {
-                            viewModel.addComment(post.id, commentText)
+                            viewModel.addComment(post.id, commentText, post.userHandle)
                             commentText = ""
                         }
                     },
@@ -416,7 +274,7 @@ fun StoryViewerDialog(
                 .clickable(onClick = onDismiss)
                 .testTag("story_viewer_full_dialog")
         ) {
-            VynImage(
+            FlareImage(
                 imageResName = story.imageRes,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
@@ -451,7 +309,7 @@ fun StoryViewerDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        VynAvatar(avatarType = story.userAvatarType, size = 36.dp)
+                        FlareAvatar(avatarType = story.userAvatarType, size = 36.dp)
                         Text(
                             text = story.username,
                             color = Color.White,
@@ -542,7 +400,7 @@ fun NotificationsDialog(
                         Text(
                             text = "${notifications.count { !it.isRead }} unread updates",
                             fontSize = 11.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                 }
@@ -594,10 +452,10 @@ fun NotificationsDialog(
                             Icon(
                                 imageVector = Icons.Outlined.NotificationsNone,
                                 contentDescription = null,
-                                tint = VynTextSecondary,
+                                tint = FlareTextSecondary,
                                 modifier = Modifier.size(36.dp)
                             )
-                            Text("No notifications here", fontSize = 13.sp, color = VynTextSecondary)
+                            Text("No notifications here", fontSize = 13.sp, color = FlareTextSecondary)
                         }
                     }
                 } else {
@@ -626,7 +484,7 @@ fun NotificationsDialog(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Box {
-                                        VynAvatar(avatarType = notif.avatarType, size = 36.dp)
+                                        FlareAvatar(avatarType = notif.avatarType, size = 36.dp)
                                         // Small mini action icon overlay
                                         Surface(
                                             shape = CircleShape,
@@ -667,7 +525,7 @@ fun NotificationsDialog(
                                         Text(
                                             text = notif.timeAgo,
                                             fontSize = 10.5.sp,
-                                            color = VynTextSecondary
+                                            color = FlareTextSecondary
                                         )
                                     }
 
@@ -721,7 +579,7 @@ fun SettingsDialog(
                 SettingItem(icon = Icons.Outlined.Notifications, title = "Push Notifications")
                 SettingItem(icon = Icons.Outlined.Security, title = "Security & Cloud Sync")
                 SettingItem(icon = Icons.AutoMirrored.Outlined.HelpOutline, title = "Help & Support")
-                SettingItem(icon = Icons.Outlined.Info, title = "About Vyn9 (v1.0)")
+                SettingItem(icon = Icons.Outlined.Info, title = "About FlareOfficial (v1.0)")
 
                 if (authState.isLoggedIn) {
                     Button(
@@ -754,7 +612,7 @@ fun SettingItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: St
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = VynTextSecondary, modifier = Modifier.size(22.dp))
+        Icon(imageVector = icon, contentDescription = null, tint = FlareTextSecondary, modifier = Modifier.size(22.dp))
         Text(text = title, fontSize = 14.sp)
     }
 }
@@ -774,14 +632,14 @@ fun ShareProfileDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                VynAvatar(
+                FlareAvatar(
                     avatarType = profile.avatarType,
                     storagePath = profile.avatarPath,
                     size = 64.dp
                 )
                 Text(profile.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("@${profile.handle}", color = VynTextSecondary, fontSize = 13.sp)
-                Text("${com.example.data.remote.Backend.BASE_WEB_URL}/@${profile.handle}", color = VynCameraBlue, fontSize = 13.sp)
+                Text("@${profile.handle}", color = FlareTextSecondary, fontSize = 13.sp)
+                Text("${com.example.data.remote.Backend.BASE_WEB_URL}/@${profile.handle}", color = FlareCameraBlue, fontSize = 13.sp)
             }
         },
         confirmButton = {

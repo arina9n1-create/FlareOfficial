@@ -1,0 +1,14 @@
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:processDebugResources' (registered by plugin 'com.android.internal.application').
+> java.nio.file.FileSystemException: C:\Users\Feelings Of Hearts\AndroidStudioProjects\version9\app\build\intermediates\compile_and_runtime_r_class_jar\debug\processDebugResources\R.jar: The process cannot access the file because it is being used by another process
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1m 35s

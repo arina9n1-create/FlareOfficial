@@ -129,6 +129,9 @@ interface SocialDao {
     @Query("UPDATE reels SET isLiked = :isLiked, likesCount = :likesCount WHERE id = :id")
     suspend fun updateReelLike(id: Long, isLiked: Boolean, likesCount: Int)
 
+    @Query("UPDATE reels SET isSaved = :isSaved WHERE id = :id")
+    suspend fun updateReelSave(id: Long, isSaved: Boolean)
+
     @Query("SELECT * FROM reels WHERE id = :id LIMIT 1")
     suspend fun getReelById(id: Long): ReelEntity?
 
@@ -191,6 +194,9 @@ interface SocialDao {
     @Query("UPDATE friends SET isMuted = :isMuted WHERE id = :id")
     suspend fun updateMuteStatus(id: String, isMuted: Boolean)
 
+    @Query("UPDATE friends SET isOnline = :online WHERE LOWER(handle) = LOWER(:handle)")
+    suspend fun updateFriendOnline(handle: String, online: Boolean)
+
     @Query("UPDATE friends SET isBlocked = :isBlocked, isFriend = 0, isFollowing = 0 WHERE id = :id")
     suspend fun updateBlockStatus(id: String, isBlocked: Boolean)
 
@@ -231,7 +237,7 @@ interface SocialDao {
     @Update
     suspend fun updateUser(user: AppUserEntity)
 
-    @Query("UPDATE app_users SET role = :role, canManageUsers = :canManageUsers, canDeletePosts = :canDeletePosts, canEditPosts = :canEditPosts, canModerateComments = :canModerateComments, canManageChats = :canManageChats, canManageMonetization = :canManageMonetization, canManageRewards = :canManageRewards, canCleanStorage = :canCleanStorage WHERE uid = :uid")
+    @Query("UPDATE app_users SET role = :role, canManageUsers = :canManageUsers, canDeletePosts = :canDeletePosts, canEditPosts = :canEditPosts, canModerateComments = :canModerateComments, canManageChats = :canManageChats, canManageMonetization = :canManageMonetization, canManageRewards = :canManageRewards, canManageRewardRules = :canManageRewardRules, canManageRewardRates = :canManageRewardRates, canManageRewardGateways = :canManageRewardGateways, canProcessPayouts = :canProcessPayouts, canCleanStorage = :canCleanStorage, canViewReports = :canViewReports, canReviewReports = :canReviewReports, canGiveWarning = :canGiveWarning, canDeleteReel = :canDeleteReel, canDeleteVideo = :canDeleteVideo, canSuspendUser = :canSuspendUser, canBanUser = :canBanUser, canRemoveWarning = :canRemoveWarning, canViewWarningHistory = :canViewWarningHistory, canViewActivityLog = :canViewActivityLog WHERE uid = :uid")
     suspend fun updateUserRoleAndPermissions(
         uid: String,
         role: String,
@@ -242,7 +248,21 @@ interface SocialDao {
         canManageChats: Boolean,
         canManageMonetization: Boolean,
         canManageRewards: Boolean,
-        canCleanStorage: Boolean
+        canManageRewardRules: Boolean,
+        canManageRewardRates: Boolean,
+        canManageRewardGateways: Boolean,
+        canProcessPayouts: Boolean,
+        canCleanStorage: Boolean,
+        canViewReports: Boolean,
+        canReviewReports: Boolean,
+        canGiveWarning: Boolean,
+        canDeleteReel: Boolean,
+        canDeleteVideo: Boolean,
+        canSuspendUser: Boolean,
+        canBanUser: Boolean,
+        canRemoveWarning: Boolean,
+        canViewWarningHistory: Boolean,
+        canViewActivityLog: Boolean
     )
 
     @Query("UPDATE app_users SET avatarType = 'default', coverType = 'default'")
@@ -270,7 +290,7 @@ interface SocialDao {
         FriendEntity::class,
         ReelEntity::class
     ],
-    version = 13,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -280,117 +300,13 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Explicit schema migrations. Remote IDs are added so the local DB can store the
-        // globally-unique Supabase UUID separately from the device-local auto-increment id.
-        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                // Wrap in try-catch to handle cases where the migration might have partially run
-                // and columns already exist (avoiding SQLiteException: duplicate column name).
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN remoteId TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE comments ADD COLUMN remoteId TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN remoteId TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE reels ADD COLUMN remoteId TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-            }
-        }
-
-        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN coverType TEXT NOT NULL DEFAULT 'default'") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE user_profile ADD COLUMN uid TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-            }
-        }
-
-        val MIGRATION_8_9: Migration = object : Migration(8, 9) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN receiverHandle TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-            }
-        }
-
-        val MIGRATION_9_10: Migration = object : Migration(9, 10) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN isPublic INTEGER NOT NULL DEFAULT 1") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN isPublic INTEGER NOT NULL DEFAULT 1") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE reels ADD COLUMN isPublic INTEGER NOT NULL DEFAULT 1") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE user_profile ADD COLUMN isPublic INTEGER NOT NULL DEFAULT 1") } catch (e: Exception) {}
-            }
-        }
-
-        val MIGRATION_10_11: Migration = object : Migration(10, 11) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN avatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN coverPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN userAvatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN storagePath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN thumbnailPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE user_profile ADD COLUMN avatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE user_profile ADD COLUMN coverPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE friends ADD COLUMN avatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE friends ADD COLUMN coverPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE reels ADD COLUMN userAvatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE reels ADD COLUMN storagePath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE reels ADD COLUMN thumbnailPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE stories ADD COLUMN userAvatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE stories ADD COLUMN storagePath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE comments ADD COLUMN userAvatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN senderAvatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN storagePath TEXT") } catch (e: Exception) {}
-            }
-        }
-
-        val MIGRATION_11_12: Migration = object : Migration(11, 12) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                // Ensure all columns from various development stages exist
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN bio TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN location TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN isBanned INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN banReason TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN registeredAt INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canManageUsers INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canDeletePosts INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canEditPosts INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canModerateComments INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canManageChats INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canManageMonetization INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canManageRewards INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN canCleanStorage INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN likesCount INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN isLiked INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN isSaved INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN isReposted INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN repostsCount INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN commentsCount INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN timeAgo TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN timestamp INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN originalText TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN isTranslated INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN translationLang TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN reactions TEXT NOT NULL DEFAULT ''") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE chat_messages ADD COLUMN audioDurationSec INTEGER NOT NULL DEFAULT 0") } catch (e: Exception) {}
-            }
-        }
-
-        val MIGRATION_12_13: Migration = object : Migration(12, 13) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                // Final state catch-all for version 13
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN avatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE app_users ADD COLUMN coverPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE user_profile ADD COLUMN avatarPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE user_profile ADD COLUMN coverPath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN storagePath TEXT") } catch (e: Exception) {}
-                try { db.execSQL("ALTER TABLE posts ADD COLUMN thumbnailPath TEXT") } catch (e: Exception) {}
-            }
-        }
-
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "vyn9_social_db"
+                    "flareofficial_social_db_v4"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                 INSTANCE = instance

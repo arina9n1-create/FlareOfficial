@@ -2,6 +2,7 @@ package com.example.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
 
 enum class UserRole(
     val roleKey: String,
@@ -14,7 +15,7 @@ enum class UserRole(
     ADMIN("ADMIN", "Admin", 80, "🛡️", 0xFF6C5CE7),
     MANAGER("MANAGER", "Manager", 60, "💼", 0xFF00B894),
     MODERATOR("MODERATOR", "Moderator", 40, "⚖️", 0xFF0984E3),
-    USER("USER", "Member", 10, "👤", 0xFF888888);
+    USER("USER", "User", 10, "👤", 0xFF888888);
 
     companion object {
         fun fromString(role: String?): UserRole {
@@ -31,166 +32,205 @@ enum class UserRole(
 
 @Entity(tableName = "app_users")
 data class AppUserEntity(
-    @PrimaryKey val uid: String,
-    val name: String,
-    val handle: String,
-    val email: String,
-    val role: String = "USER", // "SUPER_ADMIN", "ADMIN", "MANAGER", "MODERATOR", "USER"
-    val avatarType: String = "default",
-    val coverType: String = "default",
-    val bio: String = "",
-    val location: String = "",
-    val isBanned: Boolean = false,
-    val banReason: String = "",
+    @PrimaryKey val uid: String = "",
+    @ColumnInfo(defaultValue = "") val name: String = "",
+    @ColumnInfo(defaultValue = "") val handle: String = "",
+    @ColumnInfo(defaultValue = "") val email: String = "",
+    @ColumnInfo(defaultValue = "USER") val role: String = "USER", // "SUPER_ADMIN", "ADMIN", "MANAGER", "MODERATOR", "USER"
+    @ColumnInfo(defaultValue = "default") val avatarType: String = "default",
+    @ColumnInfo(defaultValue = "default") val coverType: String = "default",
+    @ColumnInfo(defaultValue = "") val bio: String = "",
+    @ColumnInfo(defaultValue = "") val location: String = "",
+    @ColumnInfo(defaultValue = "0") val isBanned: Boolean = false,
+    @ColumnInfo(defaultValue = "") val banReason: String = "",
     // Granular permissions
-    val canManageUsers: Boolean = false,
-    val canDeletePosts: Boolean = false,
-    val canEditPosts: Boolean = false,
-    val canModerateComments: Boolean = false,
-    val canManageChats: Boolean = false,
-    val canManageMonetization: Boolean = false,
-    val canManageRewards: Boolean = false,
-    val canCleanStorage: Boolean = false,
-    val isPublic: Boolean = true,
-    val registeredAt: Long = System.currentTimeMillis(),
-    val avatarPath: String? = null,
-    val coverPath: String? = null
+    @ColumnInfo(defaultValue = "0") val canManageUsers: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canDeletePosts: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canEditPosts: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canModerateComments: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canManageChats: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canManageMonetization: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canManageRewards: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canManageRewardRules: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canManageRewardRates: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canManageRewardGateways: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canProcessPayouts: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canCleanStorage: Boolean = false,
+    // Granular moderation permissions (server-authoritative — enforced by RLS + SECURITY DEFINER RPCs)
+    @ColumnInfo(defaultValue = "0") val canViewReports: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canReviewReports: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canGiveWarning: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canDeleteReel: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canDeleteVideo: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canSuspendUser: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canBanUser: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canRemoveWarning: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canViewWarningHistory: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val canViewActivityLog: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val isPublic: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val registeredAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "NULL") val avatarPath: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val coverPath: String? = null,
+    @ColumnInfo(defaultValue = "cloudflare_r2") val avatarProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "cloudflare_r2") val coverProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "NULL") val avatarMime: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val coverMime: String? = null,
+    @ColumnInfo(defaultValue = "0") val avatarSize: Long = 0,
+    @ColumnInfo(defaultValue = "0") val coverSize: Long = 0
 )
 
 @Entity(tableName = "posts")
 data class PostEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    // Globally unique remote id (UUID) issued by Supabase. The local `id` above is a
-    // device-local cache key only and must NEVER be used as the remote primary key.
-    val remoteId: String = "",
-    val username: String,
-    val userHandle: String,
-    val userAvatarType: String, // avatar preset key (URI/URL or "default")
-    val userAvatarPath: String? = null,
-    val actionText: String = "", // e.g., "updated their cover photo", "updated their profile picture · 3d"
-    val postImageRes: String, // media key: URI/URL or "default"
-    val storagePath: String? = null,
-    val thumbnailPath: String? = null,
-    val caption: String = "",
-    val likesCount: Int = 1,
-    val isLiked: Boolean = false,
-    val isSaved: Boolean = false,
-    val isReposted: Boolean = false,
-    val repostsCount: Int = 0,
-    val commentsCount: Int = 0,
-    val isPublic: Boolean = true,
-    val timeAgo: String = "3D",
-    val timestamp: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "") val remoteId: String = "",
+    @ColumnInfo(defaultValue = "") val username: String = "",
+    @ColumnInfo(defaultValue = "") val userHandle: String = "",
+    @ColumnInfo(defaultValue = "default") val userAvatarType: String = "default",
+    @ColumnInfo(defaultValue = "NULL") val userAvatarPath: String? = null,
+    @ColumnInfo(defaultValue = "") val actionText: String = "",
+    @ColumnInfo(defaultValue = "") val postImageRes: String = "",
+    @ColumnInfo(defaultValue = "NULL") val storagePath: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val thumbnailPath: String? = null,
+    @ColumnInfo(defaultValue = "") val caption: String = "",
+    @ColumnInfo(defaultValue = "0") val likesCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val isLiked: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val isSaved: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val isReposted: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val repostsCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val commentsCount: Int = 0,
+    @ColumnInfo(defaultValue = "1") val isPublic: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val isReelPost: Boolean = false,
+    @ColumnInfo(defaultValue = "") val timeAgo: String = "Just now",
+    @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "cloudflare_r2") val storageProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "NULL") val mimeType: String? = null,
+    @ColumnInfo(defaultValue = "0") val fileSize: Long = 0
 )
 
 @Entity(tableName = "comments")
 data class CommentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val remoteId: String = "",
-    val postId: Long,
-    val username: String,
-    val userAvatarType: String,
-    val userAvatarPath: String? = null,
-    val text: String,
-    val timeAgo: String = "Just now",
-    val timestamp: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "") val remoteId: String = "",
+    @ColumnInfo(defaultValue = "0") val postId: Long = 0,
+    @ColumnInfo(defaultValue = "") val username: String = "",
+    @ColumnInfo(defaultValue = "default") val userAvatarType: String = "default",
+    @ColumnInfo(defaultValue = "NULL") val userAvatarPath: String? = null,
+    @ColumnInfo(defaultValue = "") val text: String = "",
+    @ColumnInfo(defaultValue = "Just now") val timeAgo: String = "Just now",
+    @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "user_profile")
 data class UserProfileEntity(
     @PrimaryKey val id: Int = 1,
-    val uid: String = "",
+    @ColumnInfo(defaultValue = "") val uid: String = "",
     // Profile data is derived from the authenticated Supabase user/profile. These are
     // empty placeholders only and must be replaced by real server data before display.
-    val name: String = "",
-    val handle: String = "",
-    val bio: String = "",
-    val location: String = "",
-    val postsCount: Int = 0,
-    val friendsCount: Int = 0,
-    val followersCount: Int = 0,
-    val followingCount: Int = 0,
-    val avatarType: String = "default",
-    val coverType: String = "default",
-    val avatarPath: String? = null,
-    val coverPath: String? = null,
-    val isPublic: Boolean = true
+    @ColumnInfo(defaultValue = "") val name: String = "",
+    @ColumnInfo(defaultValue = "") val handle: String = "",
+    @ColumnInfo(defaultValue = "") val bio: String = "",
+    @ColumnInfo(defaultValue = "") val location: String = "",
+    @ColumnInfo(defaultValue = "0") val postsCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val friendsCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val followersCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val followingCount: Int = 0,
+    @ColumnInfo(defaultValue = "default") val avatarType: String = "default",
+    @ColumnInfo(defaultValue = "default") val coverType: String = "default",
+    @ColumnInfo(defaultValue = "NULL") val avatarPath: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val coverPath: String? = null,
+    @ColumnInfo(defaultValue = "1") val isPublic: Boolean = true,
+    @ColumnInfo(defaultValue = "cloudflare_r2") val avatarProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "cloudflare_r2") val coverProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "NULL") val avatarMime: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val coverMime: String? = null,
+    @ColumnInfo(defaultValue = "0") val avatarSize: Long = 0,
+    @ColumnInfo(defaultValue = "0") val coverSize: Long = 0
 )
 
 @Entity(tableName = "friends")
 data class FriendEntity(
-    @PrimaryKey val id: String,
-    val name: String,
-    val handle: String,
-    val avatarType: String,
-    val coverImageRes: String = "default",
-    val avatarPath: String? = null,
-    val coverPath: String? = null,
-    val bio: String = "",
-    val location: String = "",
-    val isFollowing: Boolean = true,
-    val isFollower: Boolean = true,
-    val isFriend: Boolean = true,
-    val isCloseFriend: Boolean = false,
-    val isMuted: Boolean = false,
-    val isBlocked: Boolean = false,
-    val mutualFriendsCount: Int = 0,
-    val friendshipDate: String = "",
-    val isOnline: Boolean = true,
-    val lastActive: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    @PrimaryKey val id: String = "",
+    @ColumnInfo(defaultValue = "") val name: String = "",
+    @ColumnInfo(defaultValue = "") val handle: String = "",
+    @ColumnInfo(defaultValue = "default") val avatarType: String = "default",
+    @ColumnInfo(defaultValue = "default") val coverImageRes: String = "default",
+    @ColumnInfo(defaultValue = "NULL") val avatarPath: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val coverPath: String? = null,
+    @ColumnInfo(defaultValue = "cloudflare_r2") val avatarProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "cloudflare_r2") val coverProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "") val bio: String = "",
+    @ColumnInfo(defaultValue = "") val location: String = "",
+    @ColumnInfo(defaultValue = "1") val isFollowing: Boolean = true,
+    @ColumnInfo(defaultValue = "1") val isFollower: Boolean = true,
+    @ColumnInfo(defaultValue = "1") val isFriend: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val isCloseFriend: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val isMuted: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val isBlocked: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val mutualFriendsCount: Int = 0,
+    @ColumnInfo(defaultValue = "") val friendshipDate: String = "",
+    @ColumnInfo(defaultValue = "1") val isOnline: Boolean = true,
+    @ColumnInfo(defaultValue = "") val lastActive: String = "",
+    @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "stories")
 data class StoryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val username: String,
-    val userAvatarType: String,
-    val userAvatarPath: String? = null,
-    val imageRes: String,
-    val storagePath: String? = null,
-    val caption: String = "",
-    val isOwn: Boolean = false,
-    val timestamp: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "") val username: String = "",
+    @ColumnInfo(defaultValue = "default") val userAvatarType: String = "default",
+    @ColumnInfo(defaultValue = "NULL") val userAvatarPath: String? = null,
+    @ColumnInfo(defaultValue = "") val imageRes: String = "",
+    @ColumnInfo(defaultValue = "NULL") val storagePath: String? = null,
+    @ColumnInfo(defaultValue = "") val caption: String = "",
+    @ColumnInfo(defaultValue = "0") val isOwn: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "cloudflare_r2") val storageProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "NULL") val mimeType: String? = null,
+    @ColumnInfo(defaultValue = "0") val fileSize: Long = 0
 )
 
-@Entity(tableName = "chat_messages")
+@Entity(
+    tableName = "chat_messages",
+    indices = [androidx.room.Index(value = ["remoteId"], unique = true)]
+)
 data class ChatMessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val remoteId: String = "",
-    val roomId: String = "global_live",
-    val senderName: String,
-    val senderHandle: String = "",
-    val receiverHandle: String = "",
-    val senderAvatar: String,
-    val senderAvatarPath: String? = null,
-    val messageText: String,
-    val originalText: String = "",
-    val isTranslated: Boolean = false,
-    val translationLang: String = "", // e.g., "EN", "BN"
-    val mediaUrl: String? = null,
-    val storagePath: String? = null,
-    val mediaType: String = "text", // "text", "image", "audio", "system"
-    val time: String,
-    val isFromMe: Boolean,
+    @ColumnInfo(defaultValue = "") val remoteId: String = "",
+    @ColumnInfo(defaultValue = "global_live") val roomId: String = "global_live",
+    @ColumnInfo(defaultValue = "") val senderName: String = "",
+    @ColumnInfo(defaultValue = "") val senderHandle: String = "",
+    @ColumnInfo(defaultValue = "") val receiverHandle: String = "",
+    @ColumnInfo(defaultValue = "default") val senderAvatar: String = "default",
+    @ColumnInfo(defaultValue = "NULL") val senderAvatarPath: String? = null,
+    @ColumnInfo(defaultValue = "") val messageText: String = "",
+    @ColumnInfo(defaultValue = "") val originalText: String = "",
+    @ColumnInfo(defaultValue = "0") val isTranslated: Boolean = false,
+    @ColumnInfo(defaultValue = "") val translationLang: String = "", // e.g., "EN", "BN"
+    @ColumnInfo(defaultValue = "NULL") val mediaUrl: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val storagePath: String? = null,
+    @ColumnInfo(defaultValue = "cloudflare_r2") val storageProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "text") val mediaType: String = "text", // "text", "image", "audio", "system"
+    @ColumnInfo(defaultValue = "Just now") val time: String = "Just now",
+    @ColumnInfo(defaultValue = "0") val isFromMe: Boolean = false,
     // Messages must NOT default to read. Read state is per-user (see chat_message_reads
     // or read_by_handles on the remote record) and only the recipient that actually views
     // a message marks it read.
-    val isRead: Boolean = false,
-    val reactions: String = "",
-    val audioDurationSec: Int = 0,
-    val timestamp: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "0") val isRead: Boolean = false,
+    @ColumnInfo(defaultValue = "") val reactions: String = "",
+    @ColumnInfo(defaultValue = "0") val audioDurationSec: Int = 0,
+    @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "notifications")
 data class NotificationEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val username: String,
-    val avatarType: String,
-    val actionText: String,
-    val timeAgo: String,
-    val isRead: Boolean = false,
-    val timestamp: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "") val username: String = "",
+    @ColumnInfo(defaultValue = "") val recipientHandle: String = "",
+    @ColumnInfo(defaultValue = "default") val avatarType: String = "default",
+    @ColumnInfo(defaultValue = "") val actionText: String = "",
+    @ColumnInfo(defaultValue = "Just now") val timeAgo: String = "Just now",
+    @ColumnInfo(defaultValue = "0") val isRead: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis()
 )
 
 data class CallSignalEntity(
@@ -208,25 +248,83 @@ data class CallSignalEntity(
 @Entity(tableName = "reels")
 data class ReelEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val remoteId: String = "",
-    val author: String = "",
-    val handle: String = "",
-    val avatarType: String = "default",
-    val userAvatarPath: String? = null,
-    val caption: String = "",
-    val music: String = "Original Audio",
-    val imageRes: String = "",
-    val videoUrl: String? = null,
-    val storagePath: String? = null,
-    val thumbnailPath: String? = null,
-    val location: String = "",
-    val effectName: String? = null,
-    val likesCount: Int = 0,
-    val commentsCount: Int = 0,
-    val sharesCount: Int = 0,
-    val isLiked: Boolean = false,
-    val isSaved: Boolean = false,
-    val isPublic: Boolean = true,
-    val timestamp: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "") val remoteId: String = "",
+    @ColumnInfo(defaultValue = "") val author: String = "",
+    @ColumnInfo(defaultValue = "") val handle: String = "",
+    @ColumnInfo(defaultValue = "default") val avatarType: String = "default",
+    @ColumnInfo(defaultValue = "NULL") val userAvatarPath: String? = null,
+    @ColumnInfo(defaultValue = "") val caption: String = "",
+    @ColumnInfo(defaultValue = "Original Audio") val music: String = "Original Audio",
+    @ColumnInfo(defaultValue = "") val imageRes: String = "",
+    @ColumnInfo(defaultValue = "NULL") val videoUrl: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val storagePath: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val thumbnailPath: String? = null,
+    @ColumnInfo(defaultValue = "") val location: String = "",
+    @ColumnInfo(defaultValue = "NULL") val effectName: String? = null,
+    @ColumnInfo(defaultValue = "0") val likesCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val commentsCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val sharesCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val durationSecs: Int = 0,
+    @ColumnInfo(defaultValue = "0") val isLiked: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val isSaved: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val isPublic: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val timestamp: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "cloudflare_r2") val storageProvider: String = "cloudflare_r2",
+    @ColumnInfo(defaultValue = "NULL") val mimeType: String? = null,
+    @ColumnInfo(defaultValue = "0") val fileSize: Long = 0
+)
+// =============================================================================
+// MODERATION DOMAIN MODELS (not Room entities — always fetched from Supabase)
+// =============================================================================
+
+data class ModerationReport(
+    val id: String = "",
+    val contentType: String = "POST",      // POST, REEL, VIDEO, USER
+    val contentId: String = "",
+    val contentPreview: String = "",
+    val targetHandle: String = "",
+    val targetUid: String = "",
+    val reporterHandle: String = "",
+    val reason: String = "",
+    val details: String = "",
+    val status: String = "PENDING",        // PENDING, REVIEWED, DISMISSED, ACTION_TAKEN
+    val reportCount: Int = 1,
+    val createdAt: Long = System.currentTimeMillis(),
+    val reviewedBy: String = "",
+    val resolvedAt: Long = 0
+)
+
+data class ModerationWarning(
+    val id: String = "",
+    val userId: String = "",
+    val userHandle: String = "",
+    val reason: String = "",
+    val warnedBy: String = "",
+    val contentType: String = "",
+    val contentId: String = "",
+    val reportId: String = "",
+    val status: String = "ACTIVE",         // ACTIVE, REMOVED
+    val createdAt: Long = System.currentTimeMillis(),
+    val removedBy: String = "",
+    val removedAt: Long = 0
+)
+
+data class ModerationActivityItem(
+    val id: String = "",
+    val actorHandle: String = "",
+    val action: String = "",
+    val targetHandle: String = "",
+    val targetType: String = "",
+    val contentId: String = "",
+    val reportId: String = "",
+    val reason: String = "",
+    val meta: String = "{}",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/** Simple value wrapper returned by a moderation RPC call (success flag + message). */
+data class ModerationActionResult(
+    val success: Boolean,
+    val message: String
 )
 

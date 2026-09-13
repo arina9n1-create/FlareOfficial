@@ -1,15 +1,20 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
+import android.net.Uri
+import java.io.File
+
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.personalId.PersonalIdService
-import com.example.media.WebRtcCallManager
+import com.example.media.AgoraCallManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,7 +49,15 @@ data class PidChatItem(
     val peerAvatarUrl: String = "",
     val lastPreview: String,
     val lastAt: Long?,
-    val unreadCount: Int
+    val unreadCount: Int,
+    val isMuted: Boolean = false,
+    val isArchived: Boolean = false
+)
+
+data class PidReaction(
+    val emoji: String,
+    val count: Int,
+    val reactedByMe: Boolean
 )
 
 data class PidMessage(
@@ -53,7 +66,24 @@ data class PidMessage(
     val isMine: Boolean,
     val createdAtMs: Long?,
     val createdAt: String = "",
-    val isRead: Boolean = false
+    val isRead: Boolean = false,
+    val editedAtMs: Long? = null,
+    val replyToId: String? = null,
+    val replyText: String = "",
+    val replyIsMine: Boolean = false,
+    val mediaUrl: String = "",
+    val mediaType: String = "",
+    val mediaName: String = "",
+    val isPinned: Boolean = false,
+    val reactions: List<PidReaction> = emptyList()
+)
+
+data class PidConversationSettings(
+    val muted: Boolean = false,
+    val archived: Boolean = false,
+    val readReceipts: Boolean = true,
+    val peerOnline: Boolean = false,
+    val peerLastSeenMs: Long? = null
 )
 
 /** Incoming-call banner data (privacy-safe: only the peer Personal ID + type). */
@@ -70,7 +100,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val service = PersonalIdService(app)
-    val webRtc = WebRtcCallManager(app)
+    val agora = AgoraCallManager(app)
 
     private val _step = MutableStateFlow<PidStep>(PidStep.Loading)
     val step: StateFlow<PidStep> = _step
@@ -102,6 +132,53 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending
 
+
+    private val _conversationSettings = MutableStateFlow(PidConversationSettings())
+    val conversationSettings: StateFlow<PidConversationSettings> = _conversationSettings
+
+    private val _replyingTo = MutableStateFlow<PidMessage?>(null)
+    val replyingTo: StateFlow<PidMessage?> = _replyingTo
+
+    private val _editingMessage = MutableStateFlow<PidMessage?>(null)
+    val editingMessage: StateFlow<PidMessage?> = _editingMessage
+
+    private val _mediaBusy = MutableStateFlow(false)
+    val mediaBusy: StateFlow<Boolean> = _mediaBusy
+
+    /** Overall attachment processing progress (0-100). >0 means an upload is running. */
+    private val _uploadProgress = MutableStateFlow(0)
+    val uploadProgress: StateFlow<Int> = _uploadProgress
+
+    /** Personal IDs this user has blocked (usernames). */
+    private val _blocked = MutableStateFlow<Set<String>>(emptySet())
+    val blocked: StateFlow<Set<String>> = _blocked
+
+    // --- LOCAL (this device only) conversation tweaks --------------------------
+    // Nicknames, pinned-to-top and hidden (delete for me) chats are stored per-device
+    // and never leak to the network — perfect for a privacy-first Personal ID namespace.
+
+    private val localPrefs =
+        getApplication<Application>().getSharedPreferences("pid_local_prefs", Context.MODE_PRIVATE)
+
+    private val _pinnedConvs = MutableStateFlow<Set<String>>(
+        localPrefs.getStringSet("pinned_convs", emptySet())?.toSet() ?: emptySet()
+    )
+    val pinnedConvs: StateFlow<Set<String>> = _pinnedConvs
+
+    private val _hiddenConvs = MutableStateFlow<Set<String>>(
+        localPrefs.getStringSet("hidden_convs", emptySet())?.toSet() ?: emptySet()
+    )
+    val hiddenConvs: StateFlow<Set<String>> = _hiddenConvs
+
+    // Peer display nickname map: conversationId -> friendly label.
+
+    private val _nicknames = MutableStateFlow<Map<String, String>>(loadNicknames())
+    val nicknames: StateFlow<Map<String, String>> = _nicknames
+
+    // A pending forwarded message — consumed by the composer of the target chat.
+    private val _forwardDraft = MutableStateFlow<String?>(null)
+    val forwardDraft: StateFlow<String?> = _forwardDraft
+
     // Call state
     private val _activeCall = MutableStateFlow<CallState?>(null)
     val activeCall: StateFlow<CallState?> = _activeCall
@@ -111,6 +188,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
 
     private var pollJob: Job? = null
     private var callPollJob: Job? = null
+    private var presenceJob: Job? = null
     private var currentCallId: String? = null
     private var currentConversationId: String? = null
     private var answerApplied = false
@@ -128,6 +206,8 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                         _myId.value = obj.optString("id", "")
                         _step.value = PidStep.Home(username)
                         refreshInbox()
+                        refreshBlockedList()
+                        startPresenceHeartbeat()
                     } else {
                         _step.value = PidStep.Setup
                     }
@@ -135,7 +215,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                 .onFailure { e: Throwable ->
                     Log.e(TAG, "bootstrap failed", e)
                     _step.value = PidStep.Setup
-                    _error.value = friendly(e, "Could not load Personal ID — please log in to Vyn9 first")
+                    _error.value = friendly(e, "Could not load Personal ID — please log in to FlareOfficial first")
                 }
             _loading.value = false
         }
@@ -143,10 +223,66 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissError() { _error.value = null }
 
+    /**
+     * App-level presence heartbeat: touches last_seen_at every 25s (well inside
+     * the 70s online window) as long as this ViewModel lives, so the user shows
+     * as "Active now" anywhere in the app — not just inside a chat.
+     */
+    private fun startPresenceHeartbeat() {
+        presenceJob?.cancel()
+        presenceJob = viewModelScope.launch {
+            while (coroutineContext.isActive) {
+                service.touchPresence()
+                kotlinx.coroutines.delay(25_000L)
+            }
+        }
+    }
+
     /** Delegates username validation to the service (matches server normalization). */
     fun normalizeUsername(raw: String): String? = service.normalizeUsername(raw)
 
     fun isValidUsername(raw: String): Boolean = service.isValidUsername(raw)
+
+    /** Logs in to one of the current account's Personal IDs (binding checked server-side). */
+    fun login(raw: String) {
+        val username = service.normalizeUsername(raw)
+        if (username == null) {
+            _error.value = "Use 3-20 characters, start with a letter, letters/numbers/underscore only"
+            return
+        }
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            service.loginPersonalId(username)
+                .onSuccess { obj ->
+                    _myId.value = obj.optString("id", "")
+                    _step.value = PidStep.Home(obj.optString("username", username))
+                    refreshInbox()
+                    refreshBlockedList()
+                }
+                .onFailure { e: Throwable ->
+                    _error.value = friendly(e, "Could not log in to Personal ID")
+                }
+            _loading.value = false
+        }
+    }
+
+    /**
+     * Logs out of the ACTIVE Personal ID ONLY. The FlareOfficial account session
+     * ("flareofficial_auth_prefs") is never touched — the account stays logged in.
+     */
+    fun signOutPersonalId() {
+        viewModelScope.launch {
+            service.logoutPersonalId()
+            _myId.value = ""
+            _chats.value = emptyList()
+            _messages.value = emptyList()
+            _search.value = emptyList()
+            _replyingTo.value = null
+            _editingMessage.value = null
+            _step.value = PidStep.Setup
+        }
+    }
 
     /** Creates the account's single Personal ID. */
     fun create(raw: String) {
@@ -173,7 +309,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearSearch() { _search.value = emptyList() }
 
-    /** Searches ONLY the Personal ID namespace. Never returns Vyn9 accounts. */
+    /** Searches ONLY the Personal ID namespace. Never returns FlareOfficial accounts. */
     fun searchUsernames(query: String) {
         viewModelScope.launch {
             if (query.isBlank()) { _search.value = emptyList(); return@launch }
@@ -211,7 +347,15 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _chatsLoading.value = true
             service.inbox()
-                .onSuccess { arr -> _chats.value = parseChats(arr) }
+                .onSuccess { arr ->
+                    val sorted = parseChats(arr)
+                        .filter { it.conversationId !in _hiddenConvs.value }
+                        .sortedWith(
+                            compareByDescending<PidChatItem> { it.conversationId in _pinnedConvs.value }
+                                .thenByDescending { it.lastAt ?: 0L }
+                        )
+                    _chats.value = sorted
+                }
                 .onFailure { e: Throwable -> Log.e(TAG, "inbox failed", e) }
             _chatsLoading.value = false
         }
@@ -226,29 +370,325 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun beginReply(message: PidMessage) {
+        _editingMessage.value = null
+        _replyingTo.value = message
+    }
+
+    fun beginEdit(message: PidMessage) {
+        if (!message.isMine || message.mediaUrl.isNotBlank()) return
+        _replyingTo.value = null
+        _editingMessage.value = message
+    }
+
+    fun cancelComposerAction() {
+        _replyingTo.value = null
+        _editingMessage.value = null
+    }
+
     fun sendMessage(conversationId: String, text: String) {
         val body = text.trim()
+        val editing = _editingMessage.value
         if (body.isEmpty() || _sending.value) return
         viewModelScope.launch {
             _sending.value = true
-            service.sendMessage(conversationId, body)
+            val result = if (editing != null) {
+                service.editMessage(conversationId, editing.id, body)
+            } else {
+                service.sendMessage(conversationId, body, _replyingTo.value?.id).map { Unit }
+            }
+            result
                 .onSuccess {
-                    service.messages(conversationId)
-                        .onSuccess { arr -> _messages.value = parseMessages(arr) }
+                    cancelComposerAction()
+                    refreshMessages(conversationId)
                     refreshInbox()
                 }
-                .onFailure { e: Throwable -> _error.value = friendly(e, "Message could not be sent") }
+                .onFailure { e: Throwable ->
+                    _error.value = friendly(e, if (editing != null) "Message could not be edited" else "Message could not be sent")
+                }
             _sending.value = false
+        }
+    }
+
+    fun sendMedia(
+        conversationId: String,
+        uri: Uri,
+        displayName: String,
+        mimeType: String,
+        caption: String = ""
+    ) {
+        if (_mediaBusy.value) return
+        viewModelScope.launch {
+            _mediaBusy.value = true
+            service.uploadMedia(conversationId, uri, displayName, mimeType)
+                .onSuccess { path ->
+                    val type = when {
+                        mimeType.startsWith("image/") -> "image"
+                        mimeType.startsWith("audio/") -> "audio"
+                        else -> "file"
+                    }
+                    service.sendMessage(
+                        conversationId = conversationId,
+                        text = caption.trim(),
+                        replyToId = _replyingTo.value?.id,
+                        mediaUrl = path,
+                        mediaType = type,
+                        mediaName = displayName.take(120)
+                    ).onSuccess {
+                        cancelComposerAction()
+                        refreshMessages(conversationId)
+                        refreshInbox()
+                    }.onFailure { e -> _error.value = friendly(e, "Attachment could not be sent") }
+                }
+                .onFailure { e -> _error.value = friendly(e, "Attachment upload failed") }
+            _mediaBusy.value = false
+        }
+    }
+
+    suspend fun downloadMedia(message: PidMessage): Result<File> =
+        service.downloadMedia(message.mediaUrl, message.mediaName)
+
+    /** One pending attachment picked from the system picker. */
+    data class MediaPick(val uri: Uri, val displayName: String, val mimeType: String)
+
+    /**
+     * Sends a batch of attachments. Reports overall processing percentage in
+     * [uploadProgress] (0-100). At 100% the messages are refreshed so they show
+     * up in the chat with the "sent" marker.
+     */
+    fun sendMediaBatch(
+        conversationId: String,
+        items: List<MediaPick>,
+        caption: String = ""
+    ) {
+        if (items.isEmpty() || _mediaBusy.value) return
+        viewModelScope.launch {
+            _mediaBusy.value = true
+            _uploadProgress.value = 1
+            val total = items.size
+            var done = 0
+            for (item in items) {
+                // Smooth incremental progress while the current file uploads.
+                val ticker = launch {
+                    while (isActive) {
+                        kotlinx.coroutines.delay(200)
+                        val perFile = 100f / total
+                        val inFile = 0.85f // leave 15% of the file's share for the send step
+                        _uploadProgress.value = ((done * perFile) + (perFile * inFile)).toInt().coerceAtMost(99)
+                    }
+                }
+                service.uploadMedia(conversationId, item.uri, item.displayName, item.mimeType)
+                    .onSuccess { path ->
+                        val type = when {
+                            item.mimeType.startsWith("image/") -> "image"
+                            item.mimeType.startsWith("video/") -> "video"
+                            item.mimeType.startsWith("audio/") -> "audio"
+                            else -> "file"
+                        }
+                        service.sendMessage(
+                            conversationId = conversationId,
+                            text = caption.trim(),
+                            replyToId = _replyingTo.value?.id,
+                            mediaUrl = path,
+                            mediaType = type,
+                            mediaName = item.displayName.take(120)
+                        ).onFailure { e -> _error.value = friendly(e, "Attachment could not be sent") }
+                    }
+                    .onFailure { e -> _error.value = friendly(e, "Attachment upload failed") }
+                ticker.cancel()
+                done++
+                _uploadProgress.value = done * 100 / total
+            }
+            cancelComposerAction()
+            refreshMessages(conversationId)
+            refreshInbox()
+            _uploadProgress.value = 100
+            // Let the UI show 100% briefly before clearing the overlay.
+            kotlinx.coroutines.delay(700)
+            _mediaBusy.value = false
+            _uploadProgress.value = 0
+        }
+    }
+
+    fun toggleReaction(conversationId: String, messageId: String, emoji: String) {
+        viewModelScope.launch {
+            service.toggleReaction(conversationId, messageId, emoji)
+                .onSuccess { refreshMessages(conversationId) }
+                .onFailure { e -> _error.value = friendly(e, "Reaction could not be updated") }
+        }
+    }
+
+    fun setPinned(conversationId: String, messageId: String, pinned: Boolean) {
+        viewModelScope.launch {
+            service.setPinned(conversationId, messageId, pinned)
+                .onSuccess { refreshMessages(conversationId) }
+                .onFailure { e -> _error.value = friendly(e, "Pin could not be updated") }
         }
     }
 
     fun deleteMessage(conversationId: String, messageId: String) {
         viewModelScope.launch {
             service.deleteMessage(conversationId, messageId)
-                .onSuccess { loadMessages(conversationId) }
+                .onSuccess { refreshMessages(conversationId); refreshInbox() }
                 .onFailure { e: Throwable -> _error.value = friendly(e, "Could not delete message") }
         }
     }
+
+    fun updateMuted(conversationId: String, muted: Boolean) = updateSettings(conversationId, muted, _conversationSettings.value.archived)
+
+    fun updateArchived(conversationId: String, archived: Boolean) = updateSettings(conversationId, _conversationSettings.value.muted, archived)
+
+    private fun updateSettings(conversationId: String, muted: Boolean, archived: Boolean) {
+        viewModelScope.launch {
+            service.updateConversationSettings(conversationId, muted, archived)
+                .onSuccess {
+                    _conversationSettings.value = _conversationSettings.value.copy(muted = muted, archived = archived)
+                    refreshInbox()
+                }
+                .onFailure { e -> _error.value = friendly(e, "Chat settings could not be updated") }
+        }
+    }
+
+    fun updateReadReceipts(enabled: Boolean) {
+        viewModelScope.launch {
+            service.updatePrivacy(enabled)
+                .onSuccess { _conversationSettings.value = _conversationSettings.value.copy(readReceipts = enabled) }
+                .onFailure { e -> _error.value = friendly(e, "Privacy setting could not be updated") }
+        }
+    }
+
+    fun clearHistory(conversationId: String) {
+        viewModelScope.launch {
+            service.clearHistory(conversationId)
+                .onSuccess { _messages.value = emptyList(); refreshInbox() }
+                .onFailure { e -> _error.value = friendly(e, "Chat history could not be cleared") }
+        }
+    }
+
+    /**
+     * Toggles mute for a conversation straight from the HOME chat list. We take the
+     * current flags from the list row (not the in-thread _conversationSettings) so
+     * long-pressing from the inbox toggles the correct row.
+     */
+    fun toggleListMute(conversationId: String, currentlyMuted: Boolean, currentlyArchived: Boolean) {
+        updateSettings(conversationId, muted = !currentlyMuted, archived = currentlyArchived)
+    }
+
+    /** Toggles archive for a conversation straight from the HOME chat list. */
+    fun toggleListArchive(conversationId: String, currentlyMuted: Boolean, currentlyArchived: Boolean) {
+        updateSettings(conversationId, muted = currentlyMuted, archived = !currentlyArchived)
+    }
+
+    /** Marks a conversation as read straight from the HOME chat list. */
+    fun markListRead(conversationId: String) {
+        viewModelScope.launch {
+            service.markRead(conversationId)
+                .onSuccess { refreshInbox() }
+                .onFailure { e -> _error.value = friendly(e, "Could not mark as read") }
+        }
+    }
+
+    /** Loads the list of blocked Personal ID usernames. */
+    fun refreshBlockedList() {
+        viewModelScope.launch {
+            service.blockedList()
+                .onSuccess { _blocked.value = it.toSet() }
+                .onFailure { e -> Log.e(TAG, "blocked list refresh failed", e) }
+        }
+    }
+
+    /**
+     * Blocks / unblocks a Personal ID. After a successful toggle the inbox is
+     * refreshed so blocked chats disappear from (or return to) the list.
+     */
+    fun toggleBlock(username: String, currentlyBlocked: Boolean) {
+        viewModelScope.launch {
+            service.toggleBlock(username, !currentlyBlocked)
+                .onSuccess {
+                    _blocked.value = if (currentlyBlocked) _blocked.value - username else _blocked.value + username
+                    refreshInbox()
+                }
+                .onFailure { e -> _error.value = friendly(e, if (currentlyBlocked) "Could not unblock" else "Could not block") }
+        }
+    }
+
+    // --------------------------------------------------------------------------
+    // LOCAL conversation tweaks: pin to top, delete for me (hide), peer nickname,
+    // forward draft. All stored per-device — no server round-trip needed.
+    // --------------------------------------------------------------------------
+
+    private fun loadNicknames(): Map<String, String> = try {
+        val o = JSONObject(localPrefs.getString("nicknames", "{}") ?: "{}")
+        val m = mutableMapOf<String, String>()
+        o.keys().forEach { k -> m[k] = o.optString(k, "") }
+        m
+    } catch (e: Exception) { emptyMap() }
+
+    private fun saveNicknames() {
+        localPrefs.edit().putString("nicknames", JSONObject(_nicknames.value).toString()).apply()
+    }
+
+    /** Display name for a conversation: the per-device nickname, falling back to @username. */
+    fun nickFor(conversationId: String, peerUsername: String): String =
+        _nicknames.value[conversationId]?.takeIf { it.isNotBlank() } ?: "@$peerUsername"
+
+    fun setPeerNickname(conversationId: String, peerUsername: String, label: String) {
+        val clean = label.trim().replace(Regex("\\s+"), " ").take(24)
+        val next = _nicknames.value.toMutableMap()
+        if (clean.isBlank() || clean.equals("@$peerUsername", ignoreCase = true)) next.remove(conversationId) else next[conversationId] = clean
+        _nicknames.value = next
+        saveNicknames()
+    }
+
+    /** Pin/Unpin a conversation to the top of the Personal ID chat list. */
+    fun togglePinConversation(conversationId: String) {
+        val cur = _pinnedConvs.value
+        val updated = if (conversationId in cur) cur - conversationId else cur + conversationId
+        _pinnedConvs.value = updated
+        localPrefs.edit().putStringSet("pinned_convs", updated.toSet()).apply()
+        refreshInbox()
+    }
+
+    /** Delete chat (for me only: hides it from this device's inbox. */
+    fun hideConversation(conversationId: String) {
+        _hiddenConvs.value = _hiddenConvs.value + conversationId
+        localPrefs.edit().putStringSet("hidden_convs", HashSet(_hiddenConvs.value)).apply()
+        refreshInbox()
+    }
+
+    /** Restores every chat hidden with "Delete chat (for me)". */
+    fun restoreAllHidden() {
+        _hiddenConvs.value = emptySet()
+        localPrefs.edit().putStringSet("hidden_convs", emptySet()).apply()
+        refreshInbox()
+    }
+
+    /** Places a pending forwarded message that the composer of the target chat consumes. */
+    fun setForwardDraft(text: String) { _forwardDraft.value = text }
+    fun clearForwardDraft() { _forwardDraft.value = null }
+
+    private fun refreshMessages(conversationId: String) {
+        viewModelScope.launch {
+            service.messages(conversationId)
+                .onSuccess { arr -> _messages.value = parseMessages(arr) }
+                .onFailure { e -> Log.e(TAG, "message refresh failed", e) }
+        }
+    }
+
+    private suspend fun loadConversationSettings(conversationId: String) {
+        service.conversationSettings(conversationId)
+            .onSuccess { o ->
+                _conversationSettings.value = PidConversationSettings(
+                    muted = o.optBoolean("muted", false),
+                    archived = o.optBoolean("archived", false),
+                    readReceipts = o.optBoolean("read_receipts", true),
+                    peerOnline = o.optBoolean("peer_online", false),
+                    peerLastSeenMs = parseMillis(o.opt("peer_last_seen"))
+                )
+            }
+            .onFailure { e -> Log.e(TAG, "conversation settings failed", e) }
+    }
+
 // ---------------------------------------------------------------------------
     // Chat navigation
     // ---------------------------------------------------------------------------
@@ -259,18 +699,27 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
         callPollJob?.cancel()
         _step.value = PidStep.Chat(conversationId, peerUsername, peerAvatarUrl)
         loadMessages(conversationId)
-        viewModelScope.launch { service.markRead(conversationId) }
+        viewModelScope.launch {
+            service.touchPresence()
+            loadConversationSettings(conversationId)
+            service.markRead(conversationId)
+        }
         pollJob = viewModelScope.launch {
-            while (true) {
+            while (coroutineContext.isActive) {
                 delay(3000)
+                if (!coroutineContext.isActive) break
+                service.touchPresence()
                 service.messages(conversationId)
                     .onSuccess { arr -> _messages.value = parseMessages(arr) }
                     .onFailure { e: Throwable -> Log.e(TAG, "message poll failed", e) }
+                service.markRead(conversationId)
+                loadConversationSettings(conversationId)
             }
         }
         callPollJob = viewModelScope.launch {
-            while (true) {
+            while (coroutineContext.isActive) {
                 delay(2500)
+                if (!coroutineContext.isActive) break
                 pollCallSignals(conversationId)
             }
         }
@@ -310,7 +759,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         pollJob?.cancel()
         callPollJob?.cancel()
-        webRtc.endCall()
+        agora.endCall()
         super.onCleared()
     }
 // ---------------------------------------------------------------------------
@@ -328,14 +777,14 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess { sig ->
                     currentCallId = sig.optString("id")
                     answerApplied = false
-                    // Create the WebRTC offer (with gathered ICE encoded in the SDP).
-                    val offer = webRtc.createOutgoingOffer(isVideo, useFrontCamera = true)
-                    if (offer.isNullOrBlank()) {
+                    // Create the Agora offer (with gathered ICE encoded in the marker).
+                    val offer = agora.createOutgoingOffer(isVideo, useFrontCamera = true)
+                    if (offer == null) {
                         _error.value = "Could not start the call (media engine busy)"
                         _loading.value = false
                         return@onSuccess
                     }
-                    service.callUpdate(currentCallId!!, sdp = offer, status = "OFFERING")
+                    service.callUpdate(currentCallId!!, sdp = offer.sdp, status = "OFFERING")
                     _activeCall.value = CallState(
                         partnerName = "@${s.peerUsername}",
                         partnerAvatar = "",
@@ -344,11 +793,12 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                         isCameraOn = isVideo,
                         isSpeakerOn = true,
                         isFrontCamera = true,
-                        status = "Ringing…",
+                        status = "Connected",
                         callId = currentCallId ?: "",
                         remoteHandle = s.peerUsername,
                         isOutgoing = true
                     )
+                    startCallDurationTicker()
                 }
                 .onFailure { e: Throwable ->
                     _error.value = friendly(e, "Could not start the call")
@@ -377,7 +827,13 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                         _loading.value = false
                         _error.value = "Call offer not ready yet"; return@onSuccess
                     }
-                    val answer = webRtc.receiveIncoming(isVideo, offer)
+                    val answer = runCatching { agora.receiveIncoming(isVideo, offer) }
+                        .getOrElse {
+                            _loading.value = false
+                            _error.value = "Could not connect audio/video"
+                            service.callReject(inc.callId)
+                            return@onSuccess
+                        }
                     if (answer.isNullOrBlank()) {
                         _loading.value = false
                         _error.value = "Could not connect audio/video"
@@ -412,16 +868,17 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
         val inc = _incomingCall.value ?: return
         _incomingCall.value = null
         viewModelScope.launch { service.callReject(inc.callId) }
-        webRtc.endCall()
+        agora.endCall()
     }
 
     fun endCall() {
+        stopCallDurationTicker()
         val callId = currentCallId
         clearCall()
         if (callId != null) {
             viewModelScope.launch { service.callEnd(callId) }
         }
-        webRtc.endCall()
+        agora.endCall()
     }
 
     private fun clearCall() {
@@ -432,7 +889,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleMute() {
         val c = _activeCall.value ?: return
         val muted = !c.isMuted
-        webRtc.toggleMute(muted)
+        agora.toggleMute(muted)
         _activeCall.value = c.copy(isMuted = muted)
     }
 
@@ -440,21 +897,46 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
         val c = _activeCall.value ?: return
         if (!c.isVideo) return
         val enabled = !c.isCameraOn
-        webRtc.toggleCamera(enabled)
+        agora.toggleCamera(enabled)
         _activeCall.value = c.copy(isCameraOn = enabled)
     }
 
     fun toggleSpeaker() {
         val c = _activeCall.value ?: return
         val on = !c.isSpeakerOn
-        webRtc.toggleSpeaker(on)
+        agora.toggleSpeaker(on)
         _activeCall.value = c.copy(isSpeakerOn = on)
     }
 
     fun flipCamera() {
-        webRtc.switchCamera()
+        agora.switchCamera()
         val c = _activeCall.value
         if (c != null) _activeCall.value = c.copy(isFrontCamera = !c.isFrontCamera)
+    }
+
+    private var callDurationJob: Job? = null
+
+    private fun startCallDurationTicker() {
+        if (callDurationJob?.isActive == true) return
+        callDurationJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                val current = _activeCall.value ?: break
+                _activeCall.value = current.copy(durationSec = current.durationSec + 1)
+            }
+        }
+    }
+
+    private fun stopCallDurationTicker() {
+        callDurationJob?.cancel()
+        callDurationJob = null
+    }
+
+    fun toggleScreenSharing() {
+        val current = _activeCall.value ?: return
+        // Screen capture requires MediaProjection permission (system scope);
+        // this toggle is kept for UI flow consistency.
+        _activeCall.value = current.copy(isScreenSharing = !current.isScreenSharing)
     }
 /** Polls call signals: detects incoming calls and connects the caller once answered. */
     private fun pollCallSignals(conversationId: String) {
@@ -490,7 +972,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                 val answer = o.optString("sdp", "")
                 if (answer.isNotBlank()) {
                     answerApplied = true
-                    webRtc.applyRemoteAnswer(answer) { ok ->
+                    agora.applyRemoteAnswer(answer) { ok ->
                         val c = _activeCall.value
                         if (c != null) {
                             _activeCall.value = c.copy(status = if (ok) "Connected" else "Connection failed")
@@ -505,7 +987,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                 (status == "REJECTED" || status == "ENDED" || status == "MISSED")
             ) {
                 clearCall()
-                webRtc.endCall()
+                agora.endCall()
                 currentCallId = null
                 _error.value = if (status == "REJECTED") "Call was declined" else "Call ended"
             }
@@ -516,7 +998,7 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
             ) {
                 val wasActive = _activeCall.value != null
                 clearCall()
-                webRtc.endCall()
+                agora.endCall()
                 currentCallId = null
                 if (wasActive) _error.value = "Call ended"
             }
@@ -547,7 +1029,9 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
                     peerAvatarUrl = o.optString("peer_avatar_url", ""),
                     lastPreview = o.optString("last_message_preview", ""),
                     lastAt = parseMillis(o.opt("last_message_at")),
-                    unreadCount = o.optInt("unread_count", 0)
+                    unreadCount = o.optInt("unread_count", 0),
+                    isMuted = o.optBoolean("is_muted", false),
+                    isArchived = o.optBoolean("is_archived", false)
                 )
             )
         }
@@ -558,19 +1042,48 @@ class PersonalIdViewModel(app: Application) : AndroidViewModel(app) {
         val out = mutableListOf<PidMessage>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
+            val reactions = mutableListOf<PidReaction>()
+            val arrR = o.optJSONArray("reactions")
+            if (arrR != null) {
+                for (j in 0 until arrR.length()) {
+                    val r = arrR.optJSONObject(j) ?: continue
+                    reactions.add(
+                        PidReaction(
+                            emoji = r.optString("emoji", ""),
+                            count = r.optInt("count", 0),
+                            reactedByMe = r.optBoolean("reacted_by_me", false)
+                        )
+                    )
+                }
+            }
             out.add(
                 PidMessage(
-                    id = o.optString("id"),
-                    text = o.optString("message_text", ""),
+                    id = jsonStr(o, "id"),
+                    text = jsonStr(o, "message_text"),
                     isMine = o.optBoolean("is_mine", false),
                     createdAtMs = parseMillis(o.opt("created_at")),
-                    createdAt = o.optString("created_at", ""),
-                    isRead = o.optBoolean("is_read", false)
+                    createdAt = jsonStr(o, "created_at"),
+                    isRead = o.optBoolean("is_read", false),
+                    editedAtMs = parseMillis(o.opt("edited_at")),
+                    replyToId = jsonStr(o, "reply_to_id").takeIf { it.isNotBlank() },
+                    replyText = jsonStr(o, "reply_text"),
+                    replyIsMine = o.optBoolean("reply_is_mine", false),
+                    mediaUrl = jsonStr(o, "media_url"),
+                    mediaType = jsonStr(o, "media_type"),
+                    mediaName = jsonStr(o, "media_name"),
+                    isPinned = o.optBoolean("is_pinned", false),
+                    reactions = reactions
                 )
             )
         }
         return out
     }
+
+    /** Android's org.json optString() returns the literal string "null" for JSON null
+     *  values — normalize those to blank so optional fields (reply/media) don't render
+     *  wrongly (e.g. every message showing a "Replying to message" quote). */
+    private fun jsonStr(o: JSONObject, key: String): String =
+        if (o.isNull(key)) "" else o.optString(key, "").takeIf { it.isNotBlank() && it != "null" } ?: ""
 
     private fun findSignal(arr: JSONArray, sigId: String): JSONObject? {
         for (i in 0 until arr.length()) {

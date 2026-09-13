@@ -17,6 +17,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Vyn9"
+rootProject.name = "FlareOfficial"
 
 include(":app")

@@ -10,7 +10,7 @@
 # class: com.example.MyWebViewJavaScriptInterface
 
 # ---------------------------------------------------------------------------
-# Release minification (R8) keep rules for Vyn9
+# Release minification (R8) keep rules for FlareOfficial
 # ---------------------------------------------------------------------------
 
 # Moshi: generated adapters are resolved by name at runtime (Class.forName),
@@ -24,8 +24,8 @@
 -keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*
 -keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations, RuntimeVisibleTypeAnnotations
 
-# WebRTC: native code calls into these classes by exact name; never rename.
--keep class org.webrtc.** { *; }
+# Agora RTC: the native engine dispatches into the Java API by exact names.
+-keep class io.agora.** { *; }
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}

@@ -1,4 +1,4 @@
--- VYN9 Rewards Backend Tables (fixed order: tables first, then policies)
+-- FlareOfficial Rewards Backend Tables (fixed order: tables first, then policies)
 -- Tables used by the Admin Panel & Reward system:
 --   withdrawals   -> coin payout requests (Admin approve/reject)
 --   admin_configs -> global reward config (Rules / Rates / Gateways)

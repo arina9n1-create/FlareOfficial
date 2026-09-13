@@ -1,4 +1,4 @@
--- VYN9 Master Persistence & Interaction Layer
+-- FLAREOFFICIAL Master Persistence & Interaction Layer
 -- 1. Support Tables for Real Interactions
 CREATE TABLE IF NOT EXISTS public.post_likes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

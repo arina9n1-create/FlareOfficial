@@ -6,16 +6,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val LightColorScheme = lightColorScheme(
-    primary = VynBlack,
-    onPrimary = VynWhite,
-    secondary = VynCameraBlue,
-    background = VynWhite,
-    surface = VynWhite,
-    onBackground = VynBlack,
-    onSurface = VynBlack,
-    outline = VynBorder,
-    surfaceVariant = VynButtonBg,
-    onSurfaceVariant = VynBlack
+    primary = FlareBlack,
+    onPrimary = FlareWhite,
+    secondary = FlareCameraBlue,
+    background = FlareWhite,
+    surface = FlareWhite,
+    onBackground = FlareBlack,
+    onSurface = FlareBlack,
+    outline = FlareBorder,
+    surfaceVariant = FlareButtonBg,
+    onSurfaceVariant = FlareBlack
 )
 
 @Composable

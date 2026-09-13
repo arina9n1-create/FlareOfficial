@@ -1,4 +1,4 @@
-package com.example.ui.components
+﻿package com.example.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -30,6 +30,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -42,11 +45,11 @@ import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainTab
 
 /**
- * Vyn9 brand logo + title (monogram badge, VYN + glowing 9 pill, sparkle).
- * Shared by VynTopBar and the Messages inbox header so the design stays identical.
+ * FlareOfficial brand logo + title (monogram badge, FLARE + glowing pill, sparkle).
+ * Shared by FlareTopBar and the Messages inbox header so the design stays identical.
  */
 @Composable
-fun VynBrandTitle(modifier: Modifier = Modifier) {
+fun FlareBrandTitle(modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -76,7 +79,7 @@ fun VynBrandTitle(modifier: Modifier = Modifier) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "V",
+                    text = "F",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Black,
                     style = androidx.compose.ui.text.TextStyle(
@@ -91,20 +94,20 @@ fun VynBrandTitle(modifier: Modifier = Modifier) {
             }
         }
 
-        // Brand Typography with Cyber-Capsule "9"
+        // Brand Typography with Stylish Gradient Cursive
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
-                text = "VYN",
-                fontSize = 18.sp,
+                text = "Flare",
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Black,
-                letterSpacing = 0.5.sp,
-                color = MaterialTheme.colorScheme.onBackground
+                fontFamily = FontFamily.Cursive,
+                color = Color.Black
             )
 
-            // Glowing Number 9 Pill Badge
+            // Glowing Official Pill Badge
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
@@ -120,8 +123,8 @@ fun VynBrandTitle(modifier: Modifier = Modifier) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "9",
-                    fontSize = 12.sp,
+                    text = "Official",
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
@@ -139,10 +142,8 @@ fun VynBrandTitle(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun VynTopBar(
-    title: String = "Vyn9",
-    showBack: Boolean = false,
-    onBackClick: () -> Unit = {},
+fun FlareTopBar(
+    title: String = "FlareOfficial",
     showSettings: Boolean = false,
     onSettingsClick: () -> Unit = {},
     notificationCount: String = "9+",
@@ -198,24 +199,8 @@ fun VynTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (showBack) {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("top_bar_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
-
                 // Beautiful Unique Brand Logo & Title Design (shared composable)
-                VynBrandTitle()
+                FlareBrandTitle()
             }
 
             Row(
@@ -457,7 +442,7 @@ fun ModernNotificationIconButton(
 }
 
 @Composable
-fun VynAvatar(
+fun FlareAvatar(
     avatarType: String,
     storagePath: String? = null,
     size: Dp = 44.dp,
@@ -467,14 +452,20 @@ fun VynAvatar(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val resolvedUrl = remember(avatarType, storagePath) {
-        com.example.util.MediaStorageResolver.resolve(storagePath ?: avatarType)
+    val isBroken = remember(avatarType, storagePath) {
+        com.example.util.MediaStorageResolver.isBrokenLegacyB2(avatarType, storagePath)
+    }
+    
+    val resolvedUrl = remember(avatarType, storagePath, isBroken) {
+        if (isBroken) "default" else com.example.util.MediaStorageResolver.resolve(avatarType, storagePath)
     }
     
     val isUriOrUrl = resolvedUrl.startsWith("content://") ||
             resolvedUrl.startsWith("file://") ||
             resolvedUrl.startsWith("http://") ||
             resolvedUrl.startsWith("https://")
+    
+    // ... rest of the code ...
 
     val boxModifier = modifier
         .size(size)
@@ -483,7 +474,7 @@ fun VynAvatar(
                 Modifier
                     .background(
                         brush = Brush.linearGradient(
-                            listOf(VynStoryGradientStart, VynStoryGradientEnd)
+                            listOf(FlareStoryGradientStart, FlareStoryGradientEnd)
                         ),
                         shape = CircleShape
                     )
@@ -498,104 +489,120 @@ fun VynAvatar(
         )
 
     if (isUriOrUrl) {
-        // The surfaceVariant base keeps the avatar visible while the remote image
-        // streams in, and the error slot falls back to the generic person glyph so a
-        // failed/blocked download (e.g. HTTP 401 from a private storage bucket) can
-        // never render as an invisible white circle.
-        SubcomposeAsyncImage(
-            model = resolvedUrl,
-            contentDescription = "User Avatar",
-            contentScale = ContentScale.Crop,
-            modifier = boxModifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            loading = {
-                Box(modifier = Modifier.fillMaxSize())
-            },
-            error = {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxSize(0.6f)
-                    )
-                }
-            }
-        )
-    } else {
-        // No hardcoded avatars. Display a generic letter avatar or placeholder background.
-        Box(
-            modifier = boxModifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Person,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.fillMaxSize(0.6f)
+        var loadFailed by remember { mutableStateOf(false) }
+
+        if (loadFailed) {
+            DefaultAvatarPlaceholder(boxModifier)
+        } else {
+            // Using AsyncImage for better performance (replaces SubcomposeAsyncImage)
+            coil.compose.AsyncImage(
+                model = resolvedUrl,
+                contentDescription = "User Avatar",
+                contentScale = ContentScale.Crop,
+                modifier = boxModifier.background(MaterialTheme.colorScheme.surfaceVariant),
+                onError = { loadFailed = true }
             )
         }
+    } else {
+        DefaultAvatarPlaceholder(boxModifier)
     }
 }
 
 @Composable
-fun VynImage(
+private fun DefaultAvatarPlaceholder(modifier: Modifier) {
+    Box(
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Person,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxSize(0.6f)
+        )
+    }
+}
+
+@Composable
+fun FlareImage(
     imageResName: String,
     storagePath: String? = null,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop
 ) {
+    var hasError by remember { mutableStateOf(false) }
+    val isBroken = remember(imageResName, storagePath) {
+        com.example.util.MediaStorageResolver.isBrokenLegacyB2(imageResName, storagePath)
+    }
+
+    if (hasError || isBroken) {
+        return
+    }
+
     val resolvedUrl = remember(imageResName, storagePath) {
-        com.example.util.MediaStorageResolver.resolve(storagePath ?: imageResName)
+        com.example.util.MediaStorageResolver.resolve(imageResName, storagePath)
     }
 
     if (resolvedUrl.startsWith("content://") || 
         resolvedUrl.startsWith("file://") || 
         resolvedUrl.startsWith("http://") || 
         resolvedUrl.startsWith("https://")) {
-        SubcomposeAsyncImage(
+        // Optimized with AsyncImage
+        coil.compose.AsyncImage(
             model = resolvedUrl,
             contentDescription = "Post media image",
             contentScale = contentScale,
             modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            loading = {
-                Box(modifier = Modifier.fillMaxSize())
-            },
-            error = {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            }
+            onError = { hasError = true }
         )
     } else {
-        // No hardcoded image resources.
-        Box(
-            modifier = modifier
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Image,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                modifier = Modifier.size(48.dp)
-            )
-        }
+        SideEffect { hasError = true }
     }
 }
 
+/**
+ * Aspect-preserving media image. Loads the remote image, reads its real intrinsic
+ * dimensions, and renders it FULLY with ContentScale.Fit — nothing is cropped.
+ * For very tall images the height is capped at [maxHeight] (letterboxed on a dark
+ * background) so a single screenshot can never dominate the whole feed.
+ */
 @Composable
-fun VynBottomNavBar(
+fun AspectFitMediaImage(
+    imageResName: String,
+    storagePath: String? = null,
+    modifier: Modifier = Modifier,
+    maxHeight: Dp = Dp.Unspecified,
+    defaultRatio: Float = 4f / 5f
+) {
+    var hasError by remember { mutableStateOf(false) }
+    val isBroken = remember(imageResName, storagePath) {
+        com.example.util.MediaStorageResolver.isBrokenLegacyB2(imageResName, storagePath)
+    }
+
+    if (hasError || isBroken) {
+        return
+    }
+
+    val resolvedUrl = remember(imageResName, storagePath) {
+        com.example.util.MediaStorageResolver.resolve(imageResName, storagePath)
+    }
+    
+    // Performance Optimization: Using AsyncImage instead of SubcomposeAsyncImage
+    // for faster scrolling and less recomposition overhead.
+    coil.compose.AsyncImage(
+        model = resolvedUrl,
+        contentDescription = "Post media image",
+        contentScale = ContentScale.FillWidth,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(max = maxHeight)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        onError = { hasError = true }
+    )
+}
+
+@Composable
+fun FlareBottomNavBar(
     currentTab: MainTab,
     onTabSelected: (MainTab) -> Unit,
     onPlusClick: () -> Unit = {},
@@ -640,7 +647,9 @@ fun VynBottomNavBar(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surface,
+            // Semi-translucent so feed/content stays visible through (behind) the bar
+            // on edge-to-edge (gesture & button navigation) devices.
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
             tonalElevation = 6.dp,
             shadowElevation = 8.dp
         ) {
@@ -660,7 +669,7 @@ fun VynBottomNavBar(
                     Icon(
                         imageVector = if (currentTab == MainTab.HOME) Icons.Filled.Home else Icons.Outlined.Home,
                         contentDescription = "Home",
-                        tint = if (currentTab == MainTab.HOME) MaterialTheme.colorScheme.onSurface else VynTextSecondary,
+                        tint = if (currentTab == MainTab.HOME) MaterialTheme.colorScheme.onSurface else FlareTextSecondary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -673,7 +682,7 @@ fun VynBottomNavBar(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
-                        tint = if (currentTab == MainTab.SEARCH) MaterialTheme.colorScheme.onSurface else VynTextSecondary,
+                        tint = if (currentTab == MainTab.SEARCH) MaterialTheme.colorScheme.onSurface else FlareTextSecondary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -695,7 +704,7 @@ fun VynBottomNavBar(
                                 brush = if (isChatActive) {
                                     Brush.linearGradient(
                                         colors = listOf(
-                                            Color(0xFF6C5CE7), // Vyn Indigo
+                                            Color(0xFF6C5CE7), // Flare Indigo
                                             Color(0xFFFF007F), // Neon Pink
                                             Color(0xFF00F2FE)  // Electric Cyan
                                         )
@@ -770,7 +779,7 @@ fun VynBottomNavBar(
                     Icon(
                         imageVector = if (currentTab == MainTab.REELS) Icons.Filled.VideoLibrary else Icons.Outlined.VideoLibrary,
                         contentDescription = "Reels",
-                        tint = if (currentTab == MainTab.REELS) MaterialTheme.colorScheme.onSurface else VynTextSecondary,
+                        tint = if (currentTab == MainTab.REELS) MaterialTheme.colorScheme.onSurface else FlareTextSecondary,
                         modifier = Modifier.size(23.dp)
                     )
                 }
@@ -789,7 +798,7 @@ fun VynBottomNavBar(
                         .testTag("nav_profile_tab"),
                     contentAlignment = Alignment.Center
                 ) {
-                    VynAvatar(
+                    FlareAvatar(
                         avatarType = "default",
                         size = 24.dp
                     )
@@ -862,7 +871,7 @@ fun ReelsBottomBar(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
                         contentDescription = null,
-                        tint = InstagramBlue,
+                        tint = FlareOfficialBlue,
                         modifier = Modifier.size(20.dp)
                     )
                 }

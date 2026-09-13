@@ -43,8 +43,8 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.model.UserProfileEntity
-import com.example.ui.components.VynAvatar
-import com.example.ui.components.VynImage
+import com.example.ui.components.FlareAvatar
+import com.example.ui.components.FlareImage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.FullScreenPhotoData
 import com.example.ui.viewmodel.SocialViewModel
@@ -132,7 +132,7 @@ fun CoverPhotoOptionsBottomSheet(
                     Text(
                         text = "Customize your profile banner aesthetic",
                         fontSize = 12.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
                     )
                 }
 
@@ -140,7 +140,7 @@ fun CoverPhotoOptionsBottomSheet(
                     onClick = onDismiss,
                     modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = VynTextSecondary)
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = FlareTextSecondary)
                 }
             }
 
@@ -162,7 +162,7 @@ fun CoverPhotoOptionsBottomSheet(
                             .size(width = 70.dp, height = 45.dp)
                             .clip(RoundedCornerShape(8.dp))
                     ) {
-                        VynImage(
+                        FlareImage(
                             imageResName = profile.coverType,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -179,7 +179,7 @@ fun CoverPhotoOptionsBottomSheet(
                         Text(
                             text = "Tap options below to change or create",
                             fontSize = 11.5.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
 
@@ -194,7 +194,7 @@ fun CoverPhotoOptionsBottomSheet(
                             onDismiss()
                         }
                     ) {
-                        Text("View", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = VynCameraBlue)
+                        Text("View", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = FlareCameraBlue)
                     }
                 }
             }
@@ -353,7 +353,7 @@ fun ProfilePictureOptionsBottomSheet(
                     Text(
                         text = "Manage your avatar, photo & frame style",
                         fontSize = 12.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
                     )
                 }
 
@@ -361,7 +361,7 @@ fun ProfilePictureOptionsBottomSheet(
                     onClick = onDismiss,
                     modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = VynTextSecondary)
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = FlareTextSecondary)
                 }
             }
 
@@ -379,7 +379,7 @@ fun ProfilePictureOptionsBottomSheet(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        VynAvatar(avatarType = profile.avatarType, size = 52.dp)
+                        FlareAvatar(avatarType = profile.avatarType, size = 52.dp)
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
@@ -392,7 +392,7 @@ fun ProfilePictureOptionsBottomSheet(
                         Text(
                             text = "@${profile.handle} · Profile Picture",
                             fontSize = 12.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
 
@@ -407,7 +407,7 @@ fun ProfilePictureOptionsBottomSheet(
                             onDismiss()
                         }
                     ) {
-                        Text("View", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = VynCameraBlue)
+                        Text("View", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = FlareCameraBlue)
                     }
                 }
             }
@@ -579,7 +579,7 @@ fun FullScreenPhotoViewerDialog(
                 IconButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clip = ClipData.newPlainText("Vyn9 Photo", data.imageResOrUri)
+                        val clip = ClipData.newPlainText("FlareOfficial Photo", data.imageResOrUri)
                         clipboard?.setPrimaryClip(clip)
                         Toast.makeText(context, "Photo link copied! 🔗", Toast.LENGTH_SHORT).show()
                     },
@@ -606,7 +606,7 @@ fun FullScreenPhotoViewerDialog(
                             .border(4.dp, Color.White.copy(alpha = 0.3f), CircleShape)
                             .clip(CircleShape)
                     ) {
-                        VynAvatar(avatarType = data.imageResOrUri, size = 280.dp)
+                        FlareAvatar(avatarType = data.imageResOrUri, size = 280.dp)
                     }
                 } else {
                     Box(
@@ -616,7 +616,7 @@ fun FullScreenPhotoViewerDialog(
                             .shadow(20.dp, RoundedCornerShape(16.dp))
                             .clip(RoundedCornerShape(16.dp))
                     ) {
-                        VynImage(
+                        FlareImage(
                             imageResName = data.imageResOrUri,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -743,12 +743,12 @@ fun AiArtGeneratorDialog(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Text("1-Tap Generative Artwork ✨", fontSize = 11.sp, color = VynTextSecondary)
+                            Text("1-Tap Generative Artwork ✨", fontSize = 11.sp, color = FlareTextSecondary)
                         }
                     }
 
                     IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = VynTextSecondary)
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = FlareTextSecondary)
                     }
                 }
 
@@ -762,13 +762,13 @@ fun AiArtGeneratorDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     if (type == "cover") {
-                        VynImage(
+                        FlareImage(
                             imageResName = generatedImageKey,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        VynAvatar(avatarType = generatedImageKey, size = 130.dp)
+                        FlareAvatar(avatarType = generatedImageKey, size = 130.dp)
                     }
 
                     if (isGenerating) {
@@ -806,7 +806,7 @@ fun AiArtGeneratorDialog(
 
                 // Style Chips
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Select Art Style:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = VynTextSecondary)
+                    Text("Select Art Style:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = FlareTextSecondary)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -947,12 +947,12 @@ fun PresetGalleryDialog(
                         Text(
                             text = "Select a pre-designed high aesthetic look",
                             fontSize = 12.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
 
                     IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = VynTextSecondary)
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = FlareTextSecondary)
                     }
                 }
 
@@ -988,7 +988,7 @@ fun PresetGalleryDialog(
                                             .height(70.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                     ) {
-                                        VynImage(imageResName = key, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                        FlareImage(imageResName = key, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                         if (isSelected) {
                                             Box(
                                                 modifier = Modifier
@@ -1004,7 +1004,7 @@ fun PresetGalleryDialog(
                                     }
                                 } else {
                                     Box(contentAlignment = Alignment.Center) {
-                                        VynAvatar(avatarType = key, size = 56.dp)
+                                        FlareAvatar(avatarType = key, size = 56.dp)
                                         if (isSelected) {
                                             Box(
                                                 modifier = Modifier
@@ -1029,7 +1029,7 @@ fun PresetGalleryDialog(
                                 Text(
                                     text = desc,
                                     fontSize = 10.5.sp,
-                                    color = VynTextSecondary,
+                                    color = FlareTextSecondary,
                                     textAlign = TextAlign.Center,
                                     maxLines = 1
                                 )
@@ -1130,14 +1130,14 @@ fun PhotoActionRowItem(
                 Text(
                     text = subtitle,
                     fontSize = 11.5.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
             }
 
             Icon(
                 imageVector = Icons.Outlined.ChevronRight,
                 contentDescription = null,
-                tint = VynTextSecondary.copy(alpha = 0.5f),
+                tint = FlareTextSecondary.copy(alpha = 0.5f),
                 modifier = Modifier
                     .size(18.dp)
             )

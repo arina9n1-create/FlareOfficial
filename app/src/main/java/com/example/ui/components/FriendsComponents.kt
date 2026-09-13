@@ -35,8 +35,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.FriendEntity
-import com.example.ui.theme.VynButtonBg
-import com.example.ui.theme.VynTextSecondary
+import com.example.data.model.PostEntity
+import com.example.data.model.ReelEntity
+import com.example.data.model.UserProfileEntity
+import com.example.ui.screens.ProfileDetailsSection
+import com.example.ui.screens.EmptyStateView
+import com.example.ui.screens.ProfileHeaderSection
+import com.example.ui.screens.ProfileSubTabRow
+import com.example.ui.theme.FlareButtonBg
+import com.example.ui.theme.FlareTextSecondary
+import com.example.ui.viewmodel.ProfileSubTab
 import com.example.ui.viewmodel.SocialViewModel
 
 @Composable
@@ -85,13 +93,13 @@ fun FriendsSectionView(
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Search Friends",
-                    tint = VynTextSecondary
+                    tint = FlareTextSecondary
                 )
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = VynTextSecondary)
+                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = FlareTextSecondary)
                     }
                 }
             },
@@ -138,7 +146,7 @@ fun FriendsSectionView(
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                        containerColor = VynButtonBg,
+                        containerColor = FlareButtonBg,
                         labelColor = MaterialTheme.colorScheme.onSurface
                     ),
                     shape = RoundedCornerShape(20.dp),
@@ -162,7 +170,7 @@ fun FriendsSectionView(
                     Icon(
                         imageVector = Icons.Default.PeopleOutline,
                         contentDescription = null,
-                        tint = VynTextSecondary,
+                        tint = FlareTextSecondary,
                         modifier = Modifier.size(48.dp)
                     )
                     Text(
@@ -174,7 +182,7 @@ fun FriendsSectionView(
                     Text(
                         text = "Try adjusting your search or follow more people!",
                         fontSize = 13.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
                     )
                 }
             }
@@ -221,7 +229,7 @@ fun FriendsSectionView(
                 Text(
                     text = "Are you sure you want to remove @${target.handle} from your friends list? You won't see their private posts and stories.",
                     fontSize = 14.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
             },
             confirmButton = {
@@ -267,7 +275,7 @@ fun FriendsSectionView(
                 Text(
                     text = "@${target.handle} will no longer be able to message you, view your profile, or see your posts.",
                     fontSize = 14.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
             },
             confirmButton = {
@@ -323,7 +331,7 @@ fun FriendCardItem(
                 modifier = Modifier.weight(1f)
             ) {
                 Box {
-                    VynAvatar(avatarType = friend.avatarType, storagePath = friend.avatarPath, size = 52.dp)
+                    FlareAvatar(avatarType = friend.avatarType, storagePath = friend.avatarPath, size = 52.dp)
                     // Online Badge Dot
                     if (friend.isOnline) {
                         Box(
@@ -358,7 +366,7 @@ fun FriendCardItem(
                     Text(
                         text = "@${friend.handle} · ${friend.location}",
                         fontSize = 12.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -400,7 +408,7 @@ fun FriendCardItem(
                         Text(
                             text = "${friend.mutualFriendsCount} mutual friends",
                             fontSize = 11.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                 }
@@ -418,7 +426,7 @@ fun FriendCardItem(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(VynButtonBg)
+                            .background(FlareButtonBg)
                             .testTag("friend_msg_btn_${friend.handle}")
                     ) {
                         Icon(
@@ -454,7 +462,7 @@ fun FriendCardItem(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(VynButtonBg)
+                        .background(FlareButtonBg)
                         .testTag("friend_options_btn_${friend.handle}")
                 ) {
                     Icon(
@@ -505,7 +513,7 @@ fun FacebookFriendActionBottomSheet(
                     .fillMaxWidth()
                     .padding(bottom = 12.dp)
             ) {
-                VynAvatar(avatarType = friend.avatarType, size = 56.dp)
+                FlareAvatar(avatarType = friend.avatarType, size = 56.dp)
                 Column {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -524,7 +532,7 @@ fun FacebookFriendActionBottomSheet(
                     Text(
                         text = "@${friend.handle} · ${friend.friendshipDate}",
                         fontSize = 13.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
                     )
                 }
             }
@@ -559,7 +567,7 @@ fun FacebookFriendActionBottomSheet(
             FriendOptionItem(
                 icon = Icons.Default.MonetizationOn,
                 title = "Send Gift / Reward Credits 🎁",
-                subtitle = "Transfer Vyn coins & gifts to friend",
+                subtitle = "Transfer Flare coins & gifts to friend",
                 iconTint = Color(0xFF2ECC71),
                 onClick = onSendGift
             )
@@ -656,56 +664,276 @@ fun FriendOptionItem(
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FriendProfilePreviewBottomSheet(
+private fun VisitedPostCard(post: PostEntity, context: android.content.Context) {
+    var liked by remember(post.id) { mutableStateOf(post.isLiked) }
+    var saved by remember(post.id) { mutableStateOf(post.isSaved) }
+    val likeCount = (post.likesCount + if (liked && !post.isLiked) 1 else 0).coerceAtLeast(0)
+
+    Column(Modifier.fillMaxWidth()) {
+        // Author header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FlareAvatar(
+                avatarType = post.userAvatarType,
+                storagePath = post.userAvatarPath,
+                size = 40.dp
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = post.username,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "@${post.userHandle} · ${post.timeAgo}",
+                    fontSize = 12.sp,
+                    color = FlareTextSecondary
+                )
+            }
+            Icon(Icons.Default.MoreVert, contentDescription = null, tint = FlareTextSecondary, modifier = Modifier.size(20.dp))
+        }
+
+        // Caption — above the media
+        if (post.caption.isNotBlank()) {
+            Text(
+                text = post.caption,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            )
+        }
+
+        // Media — full width, aspect preserved (homepage style, no cropping)
+        AspectFitMediaImage(
+            imageResName = post.postImageRes,
+            // Reel posts: storagePath holds the video key — render the thumbnail instead.
+            storagePath = post.thumbnailPath ?: post.storagePath,
+            modifier = Modifier.fillMaxWidth(),
+            maxHeight = 520.dp
+        )
+
+        // Action bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { liked = !liked }, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    imageVector = if (liked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = "Like",
+                    tint = if (liked) Color(0xFFE0245E) else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            IconButton(onClick = {}, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Comment", tint = MaterialTheme.colorScheme.onSurface)
+            }
+            IconButton(onClick = {}, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Default.Repeat, contentDescription = "Repost", tint = MaterialTheme.colorScheme.onSurface)
+            }
+            IconButton(onClick = { saved = !saved }, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    imageVector = if (saved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                    contentDescription = "Save",
+                    tint = if (saved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            IconButton(
+                onClick = { com.example.util.ShareUtils.sharePost(context, post.remoteId, post.caption) },
+                modifier = Modifier.size(38.dp)
+            ) {
+                Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        Row(Modifier.padding(horizontal = 16.dp)) {
+            Text("$likeCount likes", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text("  ·  ${post.commentsCount} comments", fontSize = 13.sp, color = FlareTextSecondary)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(top = 8.dp))
+    }
+}
+@Composable
+private fun VisitedReelCard(reel: ReelEntity, context: android.content.Context) {
+    var liked by remember(reel.id) { mutableStateOf(false) }
+    val likeCount = (reel.likesCount + if (liked) 1 else 0).coerceAtLeast(0)
+
+    Column(Modifier.fillMaxWidth()) {
+        // Author header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FlareAvatar(
+                avatarType = reel.avatarType,
+                storagePath = reel.userAvatarPath,
+                size = 40.dp
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(reel.author, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text("Reel · @${reel.handle}", fontSize = 12.sp, color = FlareTextSecondary)
+            }
+            Icon(Icons.Default.MoreVert, contentDescription = null, tint = FlareTextSecondary, modifier = Modifier.size(20.dp))
+        }
+
+        // Caption — above the media
+        if (reel.caption.isNotBlank()) {
+            Text(
+                text = reel.caption,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            )
+        }
+
+        // Reel thumbnail (video)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(440.dp)
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            FlareImage(
+                imageResName = reel.imageRes.ifBlank { "default" },
+                storagePath = reel.thumbnailPath ?: reel.storagePath,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = "Play Reel",
+                    tint = Color.White,
+                    modifier = Modifier.size(34.dp)
+                )
+            }
+        }
+
+        // Action bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { liked = !liked }, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    imageVector = if (liked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = "Like",
+                    tint = if (liked) Color(0xFFE0245E) else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            IconButton(onClick = {}, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Comment", tint = MaterialTheme.colorScheme.onSurface)
+            }
+            IconButton(
+                onClick = { com.example.util.ShareUtils.sharePost(context, reel.remoteId, reel.caption) },
+                modifier = Modifier.size(38.dp)
+            ) {
+                Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.onSurface)
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = {}, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Filled.Bookmark, contentDescription = "Save", tint = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        Row(Modifier.padding(horizontal = 16.dp)) {
+            Text("$likeCount likes", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text("  ·  ${reel.commentsCount} comments", fontSize = 13.sp, color = FlareTextSecondary)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+@Composable
+fun FriendProfileFullScreen(
     friend: FriendEntity,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
     onMessage: () -> Unit,
     onWave: () -> Unit,
     onSendGift: () -> Unit,
-    onFollowToggle: () -> Unit,
-    onOptionsClick: () -> Unit
+    onOptionsClick: () -> Unit,
+    onFollowToggle: () -> Unit = {},
+    posts: List<PostEntity> = emptyList(),
+    reels: List<ReelEntity> = emptyList()
 ) {
     val context = LocalContext.current
+    var subTab by remember { mutableStateOf(ProfileSubTab.GRID) }
+    var following by remember(friend.id) { mutableStateOf(friend.isFollowing) }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    // Render the visited profile EXACTLY like the owner's profile screen.
+    val viewedProfile = UserProfileEntity(
+        name = friend.name,
+        handle = friend.handle,
+        bio = friend.bio,
+        location = friend.location,
+        postsCount = maxOf(posts.size, friend.mutualFriendsCount),
+        friendsCount = friend.mutualFriendsCount,
+        followersCount = friend.mutualFriendsCount,
+        followingCount = 0,
+        avatarType = friend.avatarType,
+        coverType = friend.coverImageRes,
+        avatarPath = friend.avatarPath,
+        coverPath = friend.coverPath
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .verticalScroll(androidx.compose.foundation.rememberScrollState())
                 .navigationBarsPadding()
         ) {
-            // Cover Photo & Avatar Header
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-            ) {
-                VynImage(
-                    imageResName = friend.coverImageRes,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp),
-                    contentScale = ContentScale.Crop
+            // Cover Photo & Avatar Header — identical to the owner's profile header.
+            Box {
+                ProfileHeaderSection(
+                    profile = viewedProfile,
+                    onEditCover = {},
+                    onEditAvatar = {},
+                    onRemoveCover = {},
+                    onRemoveAvatar = {},
+                    onDeleteCover = {},
+                    onDeleteAvatar = {},
+                    isOwner = false
                 )
 
                 // Back / Close
                 IconButton(
-                    onClick = onDismiss,
+                    onClick = onBack,
                     modifier = Modifier
+                        .statusBarsPadding()
                         .padding(12.dp)
                         .size(36.dp)
                         .clip(CircleShape)
@@ -719,30 +947,23 @@ fun FriendProfilePreviewBottomSheet(
                     )
                 }
 
-                // Avatar Positioned Over Cover
-                Box(
+                // Options
+                IconButton(
+                    onClick = onOptionsClick,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 20.dp)
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(top = 12.dp, end = 12.dp)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f))
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .clip(CircleShape)
-                            .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                    ) {
-                        VynAvatar(avatarType = friend.avatarType, size = 76.dp)
-                    }
-                    if (friend.isOnline) {
-                        Box(
-                            modifier = Modifier
-                                .size(18.dp)
-                                .align(Alignment.BottomEnd)
-                                .clip(CircleShape)
-                                .background(Color(0xFF2ECC71))
-                                .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -750,89 +971,38 @@ fun FriendProfilePreviewBottomSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = friend.name,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            if (friend.isFriend) {
-                                Text(text = "🤝", fontSize = 18.sp)
-                            }
-                            if (friend.isCloseFriend) {
-                                Text(text = "⭐", fontSize = 16.sp)
-                            }
-                        }
-                        Text(
-                            text = "@${friend.handle} · ${friend.location}",
-                            fontSize = 13.sp,
-                            color = VynTextSecondary
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onOptionsClick,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(VynButtonBg)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "Options",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                // Bio
-                if (friend.bio.isNotBlank()) {
-                    Text(
-                        text = friend.bio,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        lineHeight = 20.sp
-                    )
-                }
-
-                // Friendship Meta
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(vertical = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Group,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "${friend.mutualFriendsCount} Mutual Friends · ${friend.friendshipDate}",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = VynTextSecondary
-                    )
-                }
+                // Same details & stats section as the owner's profile, with
+                // Follow / Unfollow as the primary action.
+                ProfileDetailsSection(
+                    profile = viewedProfile.copy(postsCount = maxOf(viewedProfile.postsCount, posts.size)),
+                    showIdentity = false,
+                    // Total reactions across this user's posts and reels
+                    likesCount = posts.sumOf { it.likesCount } + reels.sumOf { it.likesCount },
+                    onEditProfileClick = {
+                        following = !following
+                        onFollowToggle()
+                        Toast.makeText(
+                            context,
+                            if (following) "You followed @${friend.handle} ✅" else "You unfollowed @${friend.handle}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onShareProfileClick = {
+                        com.example.util.ShareUtils.shareProfile(context, friend.handle)
+                    },
+                    onCreateClick = {},
+                    editProfileLabel = if (following) "Following ✓" else "Follow",
+                    showCreateButton = false
+                )
 
                 // Facebook-Style Action Buttons Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Primary Action: Message
@@ -843,13 +1013,14 @@ fun FriendProfilePreviewBottomSheet(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(1.2f)
                             .height(44.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Message", fontWeight = FontWeight.Bold)
+                        Text("Message", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // Secondary Action: Wave / Poke
@@ -859,11 +1030,12 @@ fun FriendProfilePreviewBottomSheet(
                             Toast.makeText(context, "You waved to ${friend.name}! 👋", Toast.LENGTH_SHORT).show()
                         },
                         shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
                     ) {
-                        Text("Wave 👋", fontWeight = FontWeight.Bold)
+                        Text("Wave 👋", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // Gift Action
@@ -874,23 +1046,143 @@ fun FriendProfilePreviewBottomSheet(
                             containerColor = Color(0xFF2ECC71).copy(alpha = 0.15f),
                             contentColor = Color(0xFF27AE60)
                         ),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
                     ) {
-                        Text("Gift 🎁", fontWeight = FontWeight.Bold)
+                        Text("Gift 🎁", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                Text(
-                    text = "No photos yet",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 20.dp)
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant
                 )
+
+                // Sub-tab row — identical to the owner's profile screen
+                ProfileSubTabRow(
+                    selectedTab = subTab,
+                    onTabSelect = { subTab = it }
+                )
+
+                when (subTab) {
+                    ProfileSubTab.REELS -> {
+                        val mediaReels = reels.filter { r ->
+                            (r.imageRes.isNotBlank() && r.imageRes != "default") || !r.storagePath.isNullOrBlank() || !r.videoUrl.isNullOrBlank()
+                        }
+                        if (mediaReels.isEmpty()) {
+                            EmptyStateView(
+                                icon = Icons.Outlined.VideoLibrary,
+                                title = "No Reels Yet",
+                                subtitle = "@${friend.handle} hasn't shared any reels."
+                            )
+                        } else {
+                            Column(Modifier.fillMaxWidth()) {
+                                mediaReels.forEach { reel ->
+                                    VisitedReelCard(reel = reel, context = context)
+                                }
+                            }
+                        }
+                    }
+                    ProfileSubTab.FRIENDS -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "🤝 ${friend.mutualFriendsCount} mutual friends",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            EmptyStateView(
+                                icon = Icons.Default.PeopleAlt,
+                                title = "Friends",
+                                subtitle = "Friends and followers of @${friend.handle} will appear here."
+                            )
+                        }
+                    }
+                    ProfileSubTab.REPOSTS -> {
+                        EmptyStateView(
+                            icon = Icons.Default.Repeat,
+                            title = "No Reposts",
+                            subtitle = "@${friend.handle} hasn't reposted anything yet."
+                        )
+                    }
+                    ProfileSubTab.SAVED -> {
+                        val mediaPosts = posts.filter { p ->
+                            (p.postImageRes.isNotBlank() && p.postImageRes != "default") || !p.storagePath.isNullOrBlank()
+                        }
+                        if (mediaPosts.isEmpty()) {
+                            EmptyStateView(
+                                icon = Icons.Outlined.BookmarkBorder,
+                                title = "No Saved Posts",
+                                subtitle = "@${friend.handle} hasn't saved anything yet."
+                            )
+                        } else {
+                            Column(Modifier.fillMaxWidth()) {
+                                mediaPosts.forEach { post ->
+                                    VisitedPostCard(post = post, context = context)
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        val mediaPosts = posts.filter { p ->
+                            (p.postImageRes.isNotBlank() && p.postImageRes != "default") || !p.storagePath.isNullOrBlank()
+                        }
+                        if (mediaPosts.isEmpty()) {
+                            EmptyStateView(
+                                icon = Icons.Outlined.GridOn,
+                                title = "No Posts Yet",
+                                subtitle = "@${friend.handle} hasn't shared any posts yet."
+                            )
+                        } else {
+                            Column(Modifier.fillMaxWidth()) {
+                                mediaPosts.forEach { post ->
+                                    VisitedPostCard(post = post, context = context)
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun TabButtonWithCount(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = "$count",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else FlareTextSecondary
+        )
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else FlareTextSecondary
+        )
+        Spacer(Modifier.width(4.dp))
+        Box(
+            modifier = Modifier
+                .width(40.dp)
+                .height(3.dp)
+                .background(
+                    if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    RoundedCornerShape(2.dp)
+                )
+        )
     }
 }
 
@@ -929,13 +1221,13 @@ fun SendGiftRewardDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Transfer Vyn Reward Credits as a gift to @${friend.handle}. They can redeem it for real payouts and bonuses!",
+                    text = "Transfer Flare Reward Credits as a gift to @${friend.handle}. They can redeem it for real payouts and bonuses!",
                     fontSize = 13.sp,
-                    color = VynTextSecondary
+                    color = FlareTextSecondary
                 )
 
                 Text(
-                    text = "Choose Amount (Vyn Credits):",
+                    text = "Choose Amount (Flare Credits):",
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp
                 )
@@ -947,7 +1239,7 @@ fun SendGiftRewardDialog(
                         val isSelected = selectedAmount == amount
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else VynButtonBg,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else FlareButtonBg,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable { selectedAmount = amount }

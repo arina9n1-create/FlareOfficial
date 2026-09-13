@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,7 +31,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import com.example.ui.components.VynImage
+import com.example.ui.components.FlareImage
+import kotlinx.coroutines.launch
 
 /**
  * -------------------------------------------------------------
@@ -53,7 +53,11 @@ fun ReelsVideoPlayerView(
     isPlaying: Boolean,
     isMuted: Boolean,
     modifier: Modifier = Modifier,
-    onBufferingStateChange: (Boolean) -> Unit = {}
+    storagePath: String? = null,
+    thumbnailPath: String? = null,
+    onBufferingStateChange: (Boolean) -> Unit = {},
+    onPlaybackStateChange: (Boolean) -> Unit = {},
+    onError: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -63,13 +67,16 @@ fun ReelsVideoPlayerView(
     var hasRenderedFirstFrame by remember { mutableStateOf(false) }
     var hasPlaybackError by remember { mutableStateOf(false) }
 
-    // Check disk cache status
-    LaunchedEffect(videoUrl) {
-        val resolved = com.example.util.MediaStorageResolver.resolve(videoUrl)
-        if (resolved.isNotBlank()) {
-            isCachedOnDisk = ExoPlayerCacheManager.isVideoCached(context, resolved)
-        }
+    val isBroken = remember(videoUrl, storagePath) {
+        com.example.util.MediaStorageResolver.isBrokenLegacyB2(videoUrl, storagePath)
     }
+
+    if (isBroken) {
+        SideEffect { onError() }
+        return
+    }
+    
+    // ... rest of the code ...
 
     // Manage ExoPlayer Lifecycle & Instance
     val exoPlayer = remember {
@@ -77,6 +84,8 @@ fun ReelsVideoPlayerView(
     }
 
     // Set up Player Listener
+    var retriedWithFreshToken by remember { mutableStateOf(false) }
+    val retryScope = rememberCoroutineScope()
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -85,11 +94,15 @@ fun ReelsVideoPlayerView(
                 onBufferingStateChange(buffering)
                 if (playbackState == Player.STATE_READY) {
                     hasPlaybackError = false
-                    val resolved = com.example.util.MediaStorageResolver.resolve(videoUrl)
+                    val resolved = com.example.util.MediaStorageResolver.resolve(videoUrl, storagePath)
                     if (resolved.isNotBlank()) {
                         isCachedOnDisk = ExoPlayerCacheManager.isVideoCached(context, resolved)
                     }
                 }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                onPlaybackStateChange(isPlaying)
             }
 
             override fun onRenderedFirstFrame() {
@@ -100,21 +113,48 @@ fun ReelsVideoPlayerView(
             override fun onPlayerError(error: PlaybackException) {
                 hasPlaybackError = true
                 isBuffering = false
+                // Auth tokens rotate hourly; a 401 mid-session is almost always a
+                // stale token. Refresh once and retry before giving up.
+                if (!retriedWithFreshToken) {
+                    retriedWithFreshToken = true
+                    retryScope.launch {
+                        ExoPlayerCacheManager.ensureFreshToken(context)
+                        val resolved = com.example.util.MediaStorageResolver.resolve(videoUrl, storagePath)
+                        if (resolved.isNotBlank()) {
+                            runCatching {
+                                exoPlayer.setMediaSource(
+                                    ExoPlayerCacheManager.createCachedMediaSource(context, Uri.parse(resolved))
+                                )
+                                exoPlayer.prepare()
+                                hasPlaybackError = false
+                            }
+                        } else {
+                            onError()
+                        }
+                    }
+                } else {
+                    onError()
+                }
             }
         }
         exoPlayer.addListener(listener)
 
         onDispose {
+            onPlaybackStateChange(false)
             exoPlayer.removeListener(listener)
             exoPlayer.release()
         }
     }
 
     // Handle Media Source updates
-    LaunchedEffect(videoUrl) {
+    LaunchedEffect(videoUrl, storagePath) {
         hasRenderedFirstFrame = false
         hasPlaybackError = false
-        val resolved = com.example.util.MediaStorageResolver.resolve(videoUrl)
+        // The r2-download media gateway needs a valid Bearer token. A stale
+        // (expired ~1h) token makes every video 401 and the reel buffers forever,
+        // so refresh the session first when needed.
+        ExoPlayerCacheManager.ensureFreshToken(context)
+        val resolved = com.example.util.MediaStorageResolver.resolve(videoUrl, storagePath)
         
         if (resolved.isNotBlank()) {
             try {
@@ -172,9 +212,10 @@ fun ReelsVideoPlayerView(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
     ) {
-        val hasValidVideo = !videoUrl.isNullOrBlank() && !hasPlaybackError
+        val hasValidVideo = (!videoUrl.isNullOrBlank() || !storagePath.isNullOrBlank()) && !hasPlaybackError
 
         if (hasValidVideo) {
             // AndroidView wrapping optimized PlayerView
@@ -183,7 +224,7 @@ fun ReelsVideoPlayerView(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -201,82 +242,20 @@ fun ReelsVideoPlayerView(
 
         // Show Thumbnail placeholder while buffering first frame or if video fallback is needed
         if (!hasRenderedFirstFrame || !hasValidVideo) {
-            VynImage(
+            FlareImage(
                 imageResName = thumbnailRes,
+                storagePath = thumbnailPath,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
         }
 
-        // Buffering Indicator
-        AnimatedVisibility(
-            visible = isBuffering && isCurrentPage,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center)
-        ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color.Black.copy(alpha = 0.65f),
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.5.dp,
-                        color = Color(0xFF00B894)
-                    )
-                    Text(
-                        text = "Buffering Stream...",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
 
-        // Top-left Cloud Cache Status Badge (indicates ExoPlayer disk caching)
-        AnimatedVisibility(
-            visible = isCurrentPage && hasValidVideo,
-            enter = fadeIn() + slideInVertically(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(start = 16.dp, top = 56.dp)
-        ) {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (isCachedOnDisk) Color(0xFF00B894).copy(alpha = 0.25f) else Color(0xFF0984E3).copy(alpha = 0.25f),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (isCachedOnDisk) Color(0xFF00B894).copy(alpha = 0.6f) else Color(0xFF0984E3).copy(alpha = 0.6f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Bolt,
-                        contentDescription = null,
-                        tint = if (isCachedOnDisk) Color(0xFF00B894) else Color(0xFF0984E3),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = if (isCachedOnDisk) "ExoCache: Instant 0ms" else "ExoPlayer: Caching",
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
+    // -------------------------------------------------------------
+    // NOTE: The "ExoCache" status badge was intentionally removed from the
+    // overlay — disk caching still works silently in the background.
+    // -------------------------------------------------------------
+    // Top-left debug badge removed for a clean full-screen viewing experience.
+    val _unusedCacheStatus = isCachedOnDisk // state kept for future diagnostics
     }
 }

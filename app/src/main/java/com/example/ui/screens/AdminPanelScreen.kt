@@ -8,6 +8,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,7 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.*
-import com.example.ui.components.VynAvatar
+import com.example.ui.components.FlareAvatar
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.SocialViewModel
 import java.text.SimpleDateFormat
@@ -50,7 +52,12 @@ enum class AdminRewardSubTab {
     RULES_CONFIG,       // 🎯 Daily Tasks & Referral Rules
     CONVERSION_RATES,   // 💵 Coin Exchange Rates & BDT Conversion
     GATEWAYS,           // 💳 Payment Gateways (bKash, Nagad, Rocket, Recharge, Binance)
-    PAYOUT_REQUESTS     // 💸 Coin Withdrawal Requests
+    PAYOUT_REQUESTS,    // 💸 Coin Withdrawal Requests
+    WALLET_OVERVIEW,    // 📈 Platform Wallet Summary & User Earnings (Super Admin)
+    WALLET_TRANSACTIONS,// 🧾 Wallet Transaction Management (Super Admin)
+    WALLET_ADJUST,      // ✏️ Manual Wallet Adjustment (Super Admin only)
+    WALLET_AUDIT,       // 🛡 Wallet Audit Log (Super Admin only)
+    WALLET_FRAUD        // 🚩 Suspicious Reward Activity (Super Admin only)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +85,7 @@ fun AdminPanelScreen(
     val reels by viewModel.reels.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
+    val totalPlatformCredits by viewModel.totalPlatformCredits.collectAsState()
 
     // Sections this staff member is actually allowed to see (keeps tabs & body in sync)
     val visibleSections = remember(currentRole, isSuperAdmin, currentUser) {
@@ -107,6 +115,7 @@ fun AdminPanelScreen(
 
     // Dialog state for user editing
     var editingUser by remember { mutableStateOf<AppUserEntity?>(null) }
+    var userBalanceToEdit by remember { mutableStateOf<AppUserEntity?>(null) }
     var showWipeConfirmation by remember { mutableStateOf(false) }
     var userToDelete by remember { mutableStateOf<AppUserEntity?>(null) }
     var userToBan by remember { mutableStateOf<AppUserEntity?>(null) }
@@ -179,7 +188,7 @@ fun AdminPanelScreen(
                         Text(
                             text = "You do not have permission to view or manage the Admin Control Panel. Contact the Super Admin to grant you staff privileges.",
                             fontSize = 14.sp,
-                            color = VynTextSecondary,
+                            color = FlareTextSecondary,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         Button(
@@ -235,7 +244,7 @@ fun AdminPanelScreen(
                         Text(
                             text = if (isSuperAdmin) "Full authority over users, roles, storage & monetization" else "Role: ${currentRole.displayName}",
                             fontSize = 11.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                 },
@@ -365,7 +374,9 @@ fun AdminPanelScreen(
                             allUsers = allUsers,
                             currentUser = currentUser,
                             isSuperAdmin = isSuperAdmin,
+                            canManageRewards = viewModel.canManageRewards(),
                             onEditUser = { editingUser = it },
+                            onEditBalance = { userBalanceToEdit = it },
                             onDeleteUser = { uid -> userToDelete = allUsers.firstOrNull { it.uid == uid } },
                             onToggleBan = { user ->
                                 if (user.isBanned) {
@@ -384,6 +395,7 @@ fun AdminPanelScreen(
                             chatCount = chatMessages.size,
                             notifCount = notifications.size,
                             usersCount = allUsers.size,
+                            isSuperAdmin = isSuperAdmin,
                             onCleanPosts = {
                                 viewModel.cleanAllPosts()
                                 Toast.makeText(context, "All posts & comments cleaned", Toast.LENGTH_SHORT).show()
@@ -404,7 +416,10 @@ fun AdminPanelScreen(
                                 viewModel.cleanupCorruptedPosts()
                                 Toast.makeText(context, "Broken posts cleanup triggered", Toast.LENGTH_SHORT).show()
                             },
-                            onWipeAll = { showWipeConfirmation = true }
+                            onWipeAll = { showWipeConfirmation = true },
+                            onDeleteAllExceptCeo = { handle ->
+                                viewModel.deleteAllUsersExcept(handle)
+                            }
                         )
                     }
 
@@ -416,18 +431,7 @@ fun AdminPanelScreen(
                     }
 
                     AdminMainSection.CONTENT_MODERATION -> {
-                        ContentModerationView(
-                            posts = posts,
-                            reels = reels,
-                            onDeletePost = { post ->
-                                viewModel.deletePost(post)
-                                Toast.makeText(context, "Post deleted from platform", Toast.LENGTH_SHORT).show()
-                            },
-                            onDeleteReel = { reel ->
-                                viewModel.deleteReel(reel)
-                                Toast.makeText(context, "Reel deleted from platform", Toast.LENGTH_SHORT).show()
-                            }
-                        )
+                        ModerationCenter(viewModel = viewModel)
                     }
 
                     AdminMainSection.REWARDS -> {
@@ -447,6 +451,7 @@ fun AdminPanelScreen(
                             postsCount = posts.size,
                             reelsCount = reels.size,
                             coinsOut = withdrawals.sumOf { it.creditsUsed },
+                            totalPlatformCoins = totalPlatformCredits,
                             pendingWithdrawals = withdrawals.count { it.status == "PENDING" },
                             monetizationAppsCount = monetizationApps.size
                         )
@@ -462,7 +467,7 @@ fun AdminPanelScreen(
             user = user,
             isSuperAdmin = isSuperAdmin,
             onDismiss = { editingUser = null },
-            onSave = { updatedRole, canManageUsers, canDeletePosts, canEditPosts, canModerateComments, canManageChats, canManageMonetization, canManageRewards, canCleanStorage ->
+            onSave = { updatedRole, canManageUsers, canDeletePosts, canEditPosts, canModerateComments, canManageChats, canManageMonetization, canManageRewards, canManageRewardRules, canManageRewardRates, canManageRewardGateways, canProcessPayouts, canCleanStorage, canViewReports, canReviewReports, canGiveWarning, canDeleteReel, canDeleteVideo, canSuspendUser, canBanUser, canRemoveWarning, canViewWarningHistory, canViewActivityLog ->
                 viewModel.updateUserPermissions(
                     uid = user.uid,
                     newRole = updatedRole,
@@ -473,7 +478,21 @@ fun AdminPanelScreen(
                     canManageChats = canManageChats,
                     canManageMonetization = canManageMonetization,
                     canManageRewards = canManageRewards,
-                    canCleanStorage = canCleanStorage
+                    canManageRewardRules = canManageRewardRules,
+                    canManageRewardRates = canManageRewardRates,
+                    canManageRewardGateways = canManageRewardGateways,
+                    canProcessPayouts = canProcessPayouts,
+                    canCleanStorage = canCleanStorage,
+                    canViewReports = canViewReports,
+                    canReviewReports = canReviewReports,
+                    canGiveWarning = canGiveWarning,
+                    canDeleteReel = canDeleteReel,
+                    canDeleteVideo = canDeleteVideo,
+                    canSuspendUser = canSuspendUser,
+                    canBanUser = canBanUser,
+                    canRemoveWarning = canRemoveWarning,
+                    canViewWarningHistory = canViewWarningHistory,
+                    canViewActivityLog = canViewActivityLog
                 )
                 editingUser = null
             }
@@ -546,32 +565,74 @@ fun AdminPanelScreen(
 
     // Wipe Database Confirmation Dialog
     if (showWipeConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showWipeConfirmation = false },
-            icon = { Icon(Icons.Default.Warning, contentDescription = "Warning", tint = Color(0xFFFF4757)) },
-            title = { Text("⚠️ Total Clean Slate Wipe", fontWeight = FontWeight.Bold) },
-            text = {
-                Text("This will permanently delete all posts, comments, stories, chat logs, and notifications. Only registered user accounts and their assigned roles will be preserved.\n\nAre you sure you want to proceed?")
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.wipeAllSystemData()
-                        showWipeConfirmation = false
-                        Toast.makeText(context, "System data wiped to clean state successfully!", Toast.LENGTH_LONG).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4757))
-                ) {
-                    Text("Yes, Wipe All Data", fontWeight = FontWeight.Bold)
+        // ... existing code ...
+    }
+
+    userBalanceToEdit?.let { user ->
+        UserBalanceEditDialog(
+            user = user,
+            viewModel = viewModel,
+            onDismiss = { userBalanceToEdit = null },
+            onSave = { newBalance ->
+                viewModel.updateUserBalance(user.handle, newBalance) { success, msg ->
+                    Toast.makeText(context, msg, if (success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWipeConfirmation = false }) {
-                    Text("Cancel")
-                }
+                userBalanceToEdit = null
             }
         )
     }
+}
+
+@Composable
+fun UserBalanceEditDialog(
+    user: AppUserEntity,
+    viewModel: SocialViewModel,
+    onDismiss: () -> Unit,
+    onSave: (Int) -> Unit
+) {
+    var balanceText by remember { mutableStateOf("...") }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(user.uid) {
+        val bal = viewModel.fetchUserBalance(user.handle)
+        balanceText = bal.toString()
+        isLoading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit User Balance 💰", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Update total coins for @${user.handle}", fontSize = 13.sp, color = FlareTextSecondary)
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                } else {
+                    OutlinedTextField(
+                        value = balanceText,
+                        onValueChange = { balanceText = it.filter { it.isDigit() }.take(9) },
+                        label = { Text("Current Balance (Coins)") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(balanceText.toIntOrNull() ?: 0) },
+                enabled = !isLoading && balanceText.isNotBlank()
+            ) {
+                Text("Update Balance", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 // -------------------------------------------------------------
@@ -582,88 +643,92 @@ fun SuperAdminRolesView(
     allUsers: List<AppUserEntity>,
     currentUser: AppUserEntity?,
     isSuperAdmin: Boolean,
+    canManageRewards: Boolean = false,
     onEditUser: (AppUserEntity) -> Unit,
+    onEditBalance: (AppUserEntity) -> Unit = {},
     onDeleteUser: (String) -> Unit,
     onToggleBan: (AppUserEntity) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var selectedRoleTab by remember { mutableStateOf<UserRole>(UserRole.SUPER_ADMIN) }
 
-    val admins = allUsers.filter { UserRole.fromString(it.role) != UserRole.USER }
-    val members = allUsers.filter { UserRole.fromString(it.role) == UserRole.USER }
+    // Role-tab filter
+    val tabFiltered = allUsers.filter { UserRole.fromString(it.role) == selectedRoleTab }
 
-    val filteredAdmins = admins.filter {
-        it.name.contains(searchQuery, ignoreCase = true) || it.handle.contains(searchQuery, ignoreCase = true)
+    val filteredUsers = tabFiltered.filter {
+        it.name.contains(searchQuery, ignoreCase = true) || 
+        it.handle.contains(searchQuery, ignoreCase = true) ||
+        it.email.contains(searchQuery, ignoreCase = true)
     }
-    val filteredMembers = members.filter {
-        it.name.contains(searchQuery, ignoreCase = true) || it.handle.contains(searchQuery, ignoreCase = true)
-    }
+
+    fun countByRole(role: UserRole) = allUsers.count { UserRole.fromString(it.role) == role }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // --- ROLE FILTER TABS: Super Admin / Admin / Manager / Moderator / User ---
         item {
-            // Super Admin Info Banner
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = Color(0xFFFFD700).copy(alpha = 0.12f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.3f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("👑", fontSize = 26.sp)
-                    Column {
-                        Text(
-                            text = "Super Admin Power & Hierarchy",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "First registered user is automatically Super Admin. Super Admin can assign roles: Super Admin, Admin, Manager, Moderator, or Member with custom granular permissions.",
-                            fontSize = 12.sp,
-                            color = VynTextSecondary
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            // Modern Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                placeholder = { Text("Search users by name or @handle...", fontSize = 14.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                UserRole.entries.forEach { role ->
+                    val count = countByRole(role)
+                    FilterChip(
+                        selected = selectedRoleTab == role,
+                        onClick = { 
+                            selectedRoleTab = role 
+                            searchQuery = "" // Reset search when switching tabs
+                        },
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(role.iconEmoji, fontSize = 12.sp)
+                                Text("${role.displayName} ($count)", fontWeight = if (selectedRoleTab == role) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        },
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                }
+            }
+        }
+
+        // --- SEARCH BAR (Inside User Tab) ---
+        if (selectedRoleTab == UserRole.USER) {
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    placeholder = { Text("Search by name, handle or email...", fontSize = 14.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                            }
                         }
-                    }
-                },
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    )
                 )
-            )
+            }
         }
 
-        // --- PLATFORM ADMINS & STAFF SECTION ---
-        if (filteredAdmins.isNotEmpty()) {
+        // --- USERS LIST (filtered by role tab + search query) ---
+        if (filteredUsers.isNotEmpty()) {
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -671,66 +736,36 @@ fun SuperAdminRolesView(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Platform Admins & Staff (${filteredAdmins.size})",
+                        text = if (searchQuery.isEmpty())
+                            "${selectedRoleTab.displayName}s (${filteredUsers.size})"
+                        else
+                            "Search Results (${filteredUsers.size})",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "High Privilege",
+                        text = "Tap Change Role & Perms to assign",
                         fontSize = 11.sp,
-                        color = Color(0xFFFFD700),
+                        color = FlareTextSecondary,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
-            items(filteredAdmins, key = { it.uid }) { user ->
+            items(filteredUsers, key = { it.uid }) { user ->
                 UserRoleCard(
                     user = user,
                     currentUser = currentUser,
                     isSuperAdmin = isSuperAdmin,
+                    canManageRewards = canManageRewards,
                     onEditUser = onEditUser,
+                    onEditBalance = onEditBalance,
                     onDeleteUser = onDeleteUser,
                     onToggleBan = onToggleBan
                 )
             }
-        }
-
-        // --- REGISTERED MEMBERS / SEARCH RESULTS SECTION ---
-        if (filteredMembers.isNotEmpty()) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (searchQuery.isEmpty()) "Registered Users (${filteredMembers.size})" else "Search Results (${filteredMembers.size})",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Standard Access",
-                        fontSize = 11.sp,
-                        color = Color(0xFF00B894),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            items(filteredMembers, key = { it.uid }) { user ->
-                UserRoleCard(
-                    user = user,
-                    currentUser = currentUser,
-                    isSuperAdmin = isSuperAdmin,
-                    onEditUser = onEditUser,
-                    onDeleteUser = onDeleteUser,
-                    onToggleBan = onToggleBan
-                )
-            }
-        } else if (searchQuery.isNotEmpty() && filteredAdmins.isEmpty()) {
+        } else {
             item {
                 Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -738,9 +773,14 @@ fun SuperAdminRolesView(
                             imageVector = Icons.Default.SearchOff,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
-                            tint = VynTextSecondary
+                            tint = FlareTextSecondary
                         )
-                        Text("No users found matching '$searchQuery'", color = VynTextSecondary, fontSize = 14.sp)
+                        Text(
+                            if (searchQuery.isNotEmpty()) "No users found matching '$searchQuery'"
+                            else "No ${selectedRoleTab.displayName}s yet",
+                            color = FlareTextSecondary,
+                            fontSize = 14.sp
+                        )
                     }
                 }
             }
@@ -753,13 +793,16 @@ fun UserRoleCard(
     user: AppUserEntity,
     currentUser: AppUserEntity?,
     isSuperAdmin: Boolean,
+    canManageRewards: Boolean = false,
     onEditUser: (AppUserEntity) -> Unit,
+    onEditBalance: (AppUserEntity) -> Unit = {},
     onDeleteUser: (String) -> Unit,
     onToggleBan: (AppUserEntity) -> Unit
 ) {
     val userRole = UserRole.fromString(user.role)
     val isTargetSuperAdmin = userRole == UserRole.SUPER_ADMIN
     val isSelf = currentUser?.uid == user.uid
+    val isCeo = user.handle.equals("ceo", ignoreCase = true)
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -774,7 +817,7 @@ fun UserRoleCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                VynAvatar(
+                FlareAvatar(
                     avatarType = user.avatarType,
                     storagePath = user.avatarPath,
                     size = 44.dp
@@ -812,7 +855,7 @@ fun UserRoleCard(
                     Text(
                         text = "@${user.handle} · ${user.email}",
                         fontSize = 12.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -883,11 +926,25 @@ fun UserRoleCard(
                     ) {
                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Change Role & Perms", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Role & Perms", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (isSuperAdmin || canManageRewards) {
+                        Button(
+                            onClick = { onEditBalance(user) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27AE60)),
+                            contentPadding = PaddingValues(vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Balance", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
 
-                if (isSuperAdmin && !isSelf) {
+                if (isSuperAdmin && !isSelf && !isCeo) {
                     OutlinedButton(
                         onClick = { onToggleBan(user) },
                         shape = RoundedCornerShape(8.dp),
@@ -944,7 +1001,21 @@ fun RolePermissionEditDialog(
         canManageChats: Boolean,
         canManageMonetization: Boolean,
         canManageRewards: Boolean,
-        canCleanStorage: Boolean
+        canManageRewardRules: Boolean,
+        canManageRewardRates: Boolean,
+        canManageRewardGateways: Boolean,
+        canProcessPayouts: Boolean,
+        canCleanStorage: Boolean,
+        canViewReports: Boolean,
+        canReviewReports: Boolean,
+        canGiveWarning: Boolean,
+        canDeleteReel: Boolean,
+        canDeleteVideo: Boolean,
+        canSuspendUser: Boolean,
+        canBanUser: Boolean,
+        canRemoveWarning: Boolean,
+        canViewWarningHistory: Boolean,
+        canViewActivityLog: Boolean
     ) -> Unit
 ) {
     var selectedRole by remember { mutableStateOf(UserRole.fromString(user.role)) }
@@ -955,7 +1026,21 @@ fun RolePermissionEditDialog(
     var canManageChats by remember { mutableStateOf(user.canManageChats) }
     var canManageMonetization by remember { mutableStateOf(user.canManageMonetization) }
     var canManageRewards by remember { mutableStateOf(user.canManageRewards) }
+    var canManageRewardRules by remember { mutableStateOf(user.canManageRewardRules) }
+    var canManageRewardRates by remember { mutableStateOf(user.canManageRewardRates) }
+    var canManageRewardGateways by remember { mutableStateOf(user.canManageRewardGateways) }
+    var canProcessPayouts by remember { mutableStateOf(user.canProcessPayouts) }
     var canCleanStorage by remember { mutableStateOf(user.canCleanStorage) }
+    var canViewReports by remember { mutableStateOf(user.canViewReports) }
+    var canReviewReports by remember { mutableStateOf(user.canReviewReports) }
+    var canGiveWarning by remember { mutableStateOf(user.canGiveWarning) }
+    var canDeleteReel by remember { mutableStateOf(user.canDeleteReel) }
+    var canDeleteVideo by remember { mutableStateOf(user.canDeleteVideo) }
+    var canSuspendUser by remember { mutableStateOf(user.canSuspendUser) }
+    var canBanUser by remember { mutableStateOf(user.canBanUser) }
+    var canRemoveWarning by remember { mutableStateOf(user.canRemoveWarning) }
+    var canViewWarningHistory by remember { mutableStateOf(user.canViewWarningHistory) }
+    var canViewActivityLog by remember { mutableStateOf(user.canViewActivityLog) }
 
     // Auto-update default permission presets when role changes
     fun applyPreset(role: UserRole) {
@@ -969,7 +1054,21 @@ fun RolePermissionEditDialog(
                 canManageChats = true
                 canManageMonetization = true
                 canManageRewards = true
+                canManageRewardRules = true
+                canManageRewardRates = true
+                canManageRewardGateways = true
+                canProcessPayouts = true
                 canCleanStorage = true
+                canViewReports = true
+                canReviewReports = true
+                canGiveWarning = true
+                canDeleteReel = true
+                canDeleteVideo = true
+                canSuspendUser = true
+                canBanUser = true
+                canRemoveWarning = true
+                canViewWarningHistory = true
+                canViewActivityLog = true
             }
             UserRole.ADMIN -> {
                 canManageUsers = true
@@ -979,7 +1078,21 @@ fun RolePermissionEditDialog(
                 canManageChats = true
                 canManageMonetization = true
                 canManageRewards = true
+                canManageRewardRules = true
+                canManageRewardRates = true
+                canManageRewardGateways = true
+                canProcessPayouts = true
                 canCleanStorage = false
+                canViewReports = true
+                canReviewReports = true
+                canGiveWarning = true
+                canDeleteReel = true
+                canDeleteVideo = true
+                canSuspendUser = true
+                canBanUser = true
+                canRemoveWarning = true
+                canViewWarningHistory = true
+                canViewActivityLog = true
             }
             UserRole.MANAGER -> {
                 canManageUsers = false
@@ -989,7 +1102,21 @@ fun RolePermissionEditDialog(
                 canManageChats = true
                 canManageMonetization = true
                 canManageRewards = true
+                canManageRewardRules = true
+                canManageRewardRates = true
+                canManageRewardGateways = true
+                canProcessPayouts = true
                 canCleanStorage = false
+                canViewReports = true
+                canReviewReports = true
+                canGiveWarning = true
+                canDeleteReel = true
+                canDeleteVideo = true
+                canSuspendUser = false
+                canBanUser = false
+                canRemoveWarning = true
+                canViewWarningHistory = true
+                canViewActivityLog = true
             }
             UserRole.MODERATOR -> {
                 canManageUsers = false
@@ -1000,6 +1127,16 @@ fun RolePermissionEditDialog(
                 canManageMonetization = false
                 canManageRewards = false
                 canCleanStorage = false
+                canViewReports = true
+                canReviewReports = true
+                canGiveWarning = true
+                canDeleteReel = true
+                canDeleteVideo = true
+                canSuspendUser = false
+                canBanUser = false
+                canRemoveWarning = true
+                canViewWarningHistory = true
+                canViewActivityLog = true
             }
             UserRole.USER -> {
                 canManageUsers = false
@@ -1010,6 +1147,16 @@ fun RolePermissionEditDialog(
                 canManageMonetization = false
                 canManageRewards = false
                 canCleanStorage = false
+                canViewReports = false
+                canReviewReports = false
+                canGiveWarning = false
+                canDeleteReel = false
+                canDeleteVideo = false
+                canSuspendUser = false
+                canBanUser = false
+                canRemoveWarning = false
+                canViewWarningHistory = false
+                canViewActivityLog = false
             }
         }
     }
@@ -1019,7 +1166,7 @@ fun RolePermissionEditDialog(
         title = {
             Column {
                 Text("Role & Permissions ⚙️", fontWeight = FontWeight.Bold)
-                Text("@${user.handle} · ${user.name}", fontSize = 12.sp, color = VynTextSecondary)
+                Text("@${user.handle} · ${user.name}", fontSize = 12.sp, color = FlareTextSecondary)
             }
         },
         text = {
@@ -1062,7 +1209,7 @@ fun RolePermissionEditDialog(
                                                     UserRole.USER -> "Standard platform member"
                                                 },
                                                 fontSize = 10.sp,
-                                                color = VynTextSecondary
+                                                color = FlareTextSecondary
                                             )
                                         }
                                         RadioButton(
@@ -1089,10 +1236,30 @@ fun RolePermissionEditDialog(
                         PermSwitchRow("💬 Moderate & Delete Comments", canModerateComments) { canModerateComments = it }
                         PermSwitchRow("💬 Moderate Live Multi-User Chat", canManageChats) { canManageChats = it }
                         PermSwitchRow("💎 Manage Creator Monetization", canManageMonetization) { canManageMonetization = it }
-                        PermSwitchRow("🎁 Manage Rewards & Coin Rates", canManageRewards) { canManageRewards = it }
+                        PermSwitchRow("🎁 Manage Rewards (All)", canManageRewards) { canManageRewards = it }
+                        if (canManageRewards) {
+                            Column(modifier = Modifier.padding(start = 24.dp)) {
+                                PermSwitchRow("🎯 Edit Task Rules", canManageRewardRules) { canManageRewardRules = it }
+                                PermSwitchRow("💵 Edit Exchange Rates", canManageRewardRates) { canManageRewardRates = it }
+                                PermSwitchRow("💳 Edit Payment Gateways", canManageRewardGateways) { canManageRewardGateways = it }
+                                PermSwitchRow("💸 Process Coin Payouts", canProcessPayouts) { canProcessPayouts = it }
+                            }
+                        }
                         if (isSuperAdmin) {
                             PermSwitchRow("🧹 Wipe Storage & Database", canCleanStorage) { canCleanStorage = it }
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Moderation Powers", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        PermSwitchRow("📋 View Reports", canViewReports) { canViewReports = it }
+                        PermSwitchRow("✅ Review & Resolve Reports", canReviewReports) { canReviewReports = it }
+                        PermSwitchRow("⚠️ Give Warnings", canGiveWarning) { canGiveWarning = it }
+                        PermSwitchRow("🗑️ Delete Reels", canDeleteReel) { canDeleteReel = it }
+                        PermSwitchRow("🎞️ Delete Videos", canDeleteVideo) { canDeleteVideo = it }
+                        PermSwitchRow("⏸️ Suspend Users", canSuspendUser) { canSuspendUser = it }
+                        PermSwitchRow("🚫 Ban Users", canBanUser) { canBanUser = it }
+                        PermSwitchRow("↩️ Remove Warnings", canRemoveWarning) { canRemoveWarning = it }
+                        PermSwitchRow("🕘 View Warning History", canViewWarningHistory) { canViewWarningHistory = it }
+                        PermSwitchRow("📜 View Activity Log", canViewActivityLog) { canViewActivityLog = it }
                     }
                 }
             }
@@ -1109,7 +1276,21 @@ fun RolePermissionEditDialog(
                         canManageChats,
                         canManageMonetization,
                         canManageRewards,
-                        canCleanStorage
+                        canManageRewardRules,
+                        canManageRewardRates,
+                        canManageRewardGateways,
+                        canProcessPayouts,
+                        canCleanStorage,
+                        canViewReports,
+                        canReviewReports,
+                        canGiveWarning,
+                        canDeleteReel,
+                        canDeleteVideo,
+                        canSuspendUser,
+                        canBanUser,
+                        canRemoveWarning,
+                        canViewWarningHistory,
+                        canViewActivityLog
                     )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6C5CE7))
@@ -1154,13 +1335,18 @@ fun StorageCleanView(
     chatCount: Int,
     notifCount: Int,
     usersCount: Int,
+    isSuperAdmin: Boolean = false,
     onCleanPosts: () -> Unit,
     onCleanChats: () -> Unit,
     onCleanStories: () -> Unit,
     onCleanNotifications: () -> Unit,
     onCleanupBroken: () -> Unit,
-    onWipeAll: () -> Unit
+    onWipeAll: () -> Unit,
+    onDeleteAllExceptCeo: (String) -> Unit = {}
 ) {
+    var showCeoClean by remember { mutableStateOf(false) }
+    var ceoHandle by remember { mutableStateOf("ceo") }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -1183,7 +1369,7 @@ fun StorageCleanView(
                         Text(
                             "All pre-populated fake data and demo fixtures have been cleared. Use these controls to maintain a pristine database state.",
                             fontSize = 12.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                 }
@@ -1299,6 +1485,84 @@ fun StorageCleanView(
                 }
             }
         }
+
+        if (isSuperAdmin) {
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFB8860B).copy(alpha = 0.12f)),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFB8860B).copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Color(0xFFB8860B))
+                            Text("👑 Delete Everyone Except CEO", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color(0xFFB8860B))
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "Permanently removes EVERY registered account on the platform — and their real auth accounts — EXCEPT the CEO you choose. This is irreversible. Use with extreme caution.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = ceoHandle,
+                            onValueChange = { ceoHandle = it },
+                            label = { Text("CEO @handle to KEEP") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = { showCeoClean = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB8860B)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = ceoHandle.trim().isNotBlank() && isSuperAdmin
+                        ) {
+                            Text("🗑️ DELETE ALL USERS EXCEPT @$ceoHandle", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
+                        Text(
+                            "Safety: @$ceoHandle and the currently-logged-in Super Admin are always protected by the server. Nobody can delete themselves.",
+                            fontSize = 10.sp,
+                            color = FlareTextSecondary,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCeoClean) {
+        AlertDialog(
+            onDismissRequest = { showCeoClean = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = "Warning", tint = Color(0xFFB8860B)) },
+            title = { Text("Delete everyone except @$ceoHandle?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("This permanently deletes ALL accounts (and their real auth accounts) except @$ceoHandle. No backups, no undo. The Acting Super Admin's session stays intact. Continue?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCeoClean = false
+                        onDeleteAllExceptCeo(ceoHandle.trim())
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB8860B))
+                ) {
+                    Text("Yes, Delete Everyone But CEO", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCeoClean = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -1315,7 +1579,7 @@ fun StatPill(modifier: Modifier, title: String, count: String, emoji: String, co
         ) {
             Text(emoji, fontSize = 16.sp)
             Text(count, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = color)
-            Text(title, fontSize = 10.sp, color = VynTextSecondary)
+            Text(title, fontSize = 10.sp, color = FlareTextSecondary)
         }
     }
 }
@@ -1351,7 +1615,7 @@ fun CleanActionCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text(description, fontSize = 11.sp, color = VynTextSecondary)
+                Text(description, fontSize = 11.sp, color = FlareTextSecondary)
             }
 
             Button(
@@ -1422,7 +1686,7 @@ fun AdminMonetizationSectionView(
                                     Icon(Icons.Outlined.Diamond, contentDescription = null, tint = Color(0xFF6C5CE7), modifier = Modifier.size(36.dp))
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text("No Monetization Applications", fontWeight = FontWeight.Bold)
-                                    Text("When creators apply for monetization, their requests will appear here.", fontSize = 12.sp, color = VynTextSecondary)
+                                    Text("When creators apply for monetization, their requests will appear here.", fontSize = 12.sp, color = FlareTextSecondary)
                                 }
                             }
                         }
@@ -1441,7 +1705,7 @@ fun AdminMonetizationSectionView(
                                     ) {
                                         Column {
                                             Text(app.userName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                            Text("@${app.userHandle} · ${app.followerCountAtApplication} Followers · ${app.viewCountAtApplication} Views", fontSize = 12.sp, color = VynTextSecondary)
+                                            Text("@${app.userHandle} · ${app.followerCountAtApplication} Followers · ${app.viewCountAtApplication} Views", fontSize = 12.sp, color = FlareTextSecondary)
                                         }
                                         Surface(
                                             shape = RoundedCornerShape(6.dp),
@@ -1518,7 +1782,7 @@ fun AdminMonetizationSectionView(
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text("Creator Revenue Pool 💎", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF00B894))
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text("Creators earn 60% of verified AdMob impressions on their reels and posts.", fontSize = 12.sp, color = VynTextSecondary)
+                                Text("Creators earn 60% of verified AdMob impressions on their reels and posts.", fontSize = 12.sp, color = FlareTextSecondary)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text("Available Pool Balance: $ ${String.format(Locale.US, "%.2f", earningsWallet.availableBalance)} USD", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                             }
@@ -1528,7 +1792,7 @@ fun AdminMonetizationSectionView(
             }
             2 -> {
                 Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text("No pending creator cashout requests.", color = VynTextSecondary, fontSize = 13.sp)
+                    Text("No pending creator cashout requests.", color = FlareTextSecondary, fontSize = 13.sp)
                 }
             }
         }
@@ -1548,17 +1812,59 @@ fun AdminRewardsSectionView(
     tasks: List<com.example.data.model.RewardTask>
 ) {
     val context = LocalContext.current
+    
+    val permittedTabs = remember(viewModel) {
+        buildList {
+            if (viewModel.canManageRewardRules()) add(AdminRewardSubTab.RULES_CONFIG)
+            if (viewModel.canManageRewardRates()) add(AdminRewardSubTab.CONVERSION_RATES)
+            if (viewModel.canManageRewardGateways()) add(AdminRewardSubTab.GATEWAYS)
+            if (viewModel.canProcessPayouts()) add(AdminRewardSubTab.PAYOUT_REQUESTS)
+            // New wallet/rewards features — Super Admin only (server RPCs also enforce this)
+            if (viewModel.isSuperAdmin()) {
+                add(AdminRewardSubTab.WALLET_OVERVIEW)
+                add(AdminRewardSubTab.WALLET_TRANSACTIONS)
+                add(AdminRewardSubTab.WALLET_ADJUST)
+                add(AdminRewardSubTab.WALLET_AUDIT)
+                add(AdminRewardSubTab.WALLET_FRAUD)
+            }
+        }
+    }
+    
+    val effectiveTab = if (selectedSubTab in permittedTabs) selectedSubTab else permittedTabs.firstOrNull() ?: AdminRewardSubTab.RULES_CONFIG
+    val totalPlatformCredits by viewModel.totalPlatformCredits.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF27AE60).copy(alpha = 0.12f)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(shape = CircleShape, color = Color(0xFF27AE60).copy(alpha = 0.2f), modifier = Modifier.size(44.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("💰", fontSize = 20.sp)
+                    }
+                }
+                Column {
+                    Text("Total Platform Coins Balance", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("$totalPlatformCredits Coins (~$ ${String.format(Locale.US, "%.2f", totalPlatformCredits / currentConfig.creditsPerDollar.toDouble())})", fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFF27AE60))
+                }
+            }
+        }
+
         ScrollableTabRow(
-            selectedTabIndex = selectedSubTab.ordinal,
+            selectedTabIndex = permittedTabs.indexOf(effectiveTab).coerceAtLeast(0),
             edgePadding = 12.dp,
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = Color(0xFFFFA502)
         ) {
-            AdminRewardSubTab.values().forEach { tab ->
+            permittedTabs.forEach { tab ->
                 Tab(
-                    selected = selectedSubTab == tab,
+                    selected = effectiveTab == tab,
                     onClick = { onSelectSubTab(tab) },
                     text = {
                         Text(
@@ -1567,6 +1873,11 @@ fun AdminRewardsSectionView(
                                 AdminRewardSubTab.CONVERSION_RATES -> "💵 Rates"
                                 AdminRewardSubTab.GATEWAYS -> "💳 Gateways"
                                 AdminRewardSubTab.PAYOUT_REQUESTS -> "💸 Payouts (${withdrawals.count { it.status == "PENDING" }})"
+                                AdminRewardSubTab.WALLET_OVERVIEW -> "📈 Wallet Summary"
+                                AdminRewardSubTab.WALLET_TRANSACTIONS -> "🧾 Transactions"
+                                AdminRewardSubTab.WALLET_ADJUST -> "✏️ Adjust"
+                                AdminRewardSubTab.WALLET_AUDIT -> "🛡 Audit Log"
+                                AdminRewardSubTab.WALLET_FRAUD -> "🚩 Suspicious"
                             },
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
@@ -1576,7 +1887,7 @@ fun AdminRewardsSectionView(
             }
         }
 
-        when (selectedSubTab) {
+        when (effectiveTab) {
             AdminRewardSubTab.RULES_CONFIG -> {
                 AdminRewardRulesEditor(viewModel = viewModel, currentConfig = currentConfig)
             }
@@ -1592,6 +1903,26 @@ fun AdminRewardsSectionView(
             AdminRewardSubTab.PAYOUT_REQUESTS -> {
                 AdminCoinPayoutRequestsView(viewModel = viewModel, withdrawals = withdrawals)
             }
+
+            AdminRewardSubTab.WALLET_OVERVIEW -> {
+                AdminWalletOverviewTab(viewModel = viewModel)
+            }
+
+            AdminRewardSubTab.WALLET_TRANSACTIONS -> {
+                AdminWalletTransactionsTab(viewModel = viewModel)
+            }
+
+            AdminRewardSubTab.WALLET_ADJUST -> {
+                AdminManualAdjustmentTab(viewModel = viewModel)
+            }
+
+            AdminRewardSubTab.WALLET_AUDIT -> {
+                AdminAuditLogTab(viewModel = viewModel)
+            }
+
+            AdminRewardSubTab.WALLET_FRAUD -> {
+                AdminFraudFlagsTab(viewModel = viewModel)
+            }
         }
     }
 }
@@ -1605,6 +1936,7 @@ fun AdminOverviewView(
     postsCount: Int,
     reelsCount: Int,
     coinsOut: Int,
+    totalPlatformCoins: Int,
     pendingWithdrawals: Int,
     monetizationAppsCount: Int
 ) {
@@ -1622,7 +1954,7 @@ fun AdminOverviewView(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Platform Health: All Systems Operational 🟢", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF6C5CE7))
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Room SQLite Local DB + Supabase Sync Active", fontSize = 12.sp, color = VynTextSecondary)
+                    Text("Room SQLite Local DB + Supabase Sync Active", fontSize = 12.sp, color = FlareTextSecondary)
                 }
             }
         }
@@ -1641,9 +1973,16 @@ fun AdminOverviewView(
 
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatPill(Modifier.weight(1f), "Coins Out", "$coinsOut", "🪙", Color(0xFFFFA502))
+                StatPill(Modifier.weight(1f), "Coins Paid", "$coinsOut", "🪙", Color(0xFFFFA502))
+                StatPill(Modifier.weight(1f), "User Balances", "$totalPlatformCoins", "💰", Color(0xFF27AE60))
                 StatPill(Modifier.weight(1f), "Coin Payouts", "$pendingWithdrawals", "💸", if (pendingWithdrawals > 0) Color(0xFFFF4757) else Color(0xFF00B894))
+            }
+        }
+
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatPill(Modifier.weight(1f), "Creator Apps", "$monetizationAppsCount", "💎", Color(0xFF6C5CE7))
+                Spacer(Modifier.weight(2f))
             }
         }
     }
@@ -1722,7 +2061,7 @@ fun ContentModerationView(
                 if (filteredPosts.isEmpty()) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            Text("No posts match.", color = VynTextSecondary, fontSize = 13.sp)
+                            Text("No posts match.", color = FlareTextSecondary, fontSize = 13.sp)
                         }
                     }
                 }
@@ -1742,14 +2081,14 @@ fun ContentModerationView(
                                 Text(
                                     post.caption.ifBlank { "(No caption)" },
                                     fontSize = 12.sp,
-                                    color = VynTextSecondary,
+                                    color = FlareTextSecondary,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     "❤️ ${post.likesCount} · 💬 ${post.commentsCount} · ${post.timeAgo}",
                                     fontSize = 11.sp,
-                                    color = VynTextSecondary
+                                    color = FlareTextSecondary
                                 )
                             }
                             IconButton(onClick = { pendingPostDelete = post }) {
@@ -1816,7 +2155,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.ContentModerationReel
     if (reels.isEmpty()) {
         item {
             Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                Text("No reels match.", color = VynTextSecondary, fontSize = 13.sp)
+                Text("No reels match.", color = FlareTextSecondary, fontSize = 13.sp)
             }
         }
     }
@@ -1836,11 +2175,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.ContentModerationReel
                     Text(
                         reel.caption.ifBlank { "(No caption)" },
                         fontSize = 12.sp,
-                        color = VynTextSecondary,
+                        color = FlareTextSecondary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text("❤️ ${reel.likesCount} · 💬 ${reel.commentsCount}", fontSize = 11.sp, color = VynTextSecondary)
+                    Text("❤️ ${reel.likesCount} · 💬 ${reel.commentsCount}", fontSize = 11.sp, color = FlareTextSecondary)
                 }
                 IconButton(onClick = { onDelete(reel) }) {
                     Icon(Icons.Outlined.Delete, contentDescription = "Delete reel", tint = Color(0xFFFF4757))
@@ -1964,6 +2303,7 @@ fun AdminRewardRatesEditor(
     var creditsPerDollar by remember(currentConfig) { mutableStateOf(currentConfig.creditsPerDollar.toString()) }
     var usdToBdtRate by remember(currentConfig) { mutableStateOf(currentConfig.usdToBdtRate.toString()) }
     var minWithdrawal by remember(currentConfig) { mutableStateOf(currentConfig.minWithdrawalUSD.toString()) }
+    var badgeFee by remember(currentConfig) { mutableStateOf(currentConfig.verificationBadgeFeeUSD.toString()) }
 
     val parsedCredits = creditsPerDollar.toIntOrNull() ?: currentConfig.creditsPerDollar
     val parsedRate = usdToBdtRate.toDoubleOrNull() ?: currentConfig.usdToBdtRate
@@ -2006,6 +2346,19 @@ fun AdminRewardRatesEditor(
             )
         }
         item {
+            OutlinedTextField(
+                value = badgeFee,
+                onValueChange = { input -> badgeFee = input.filter { it.isDigit() || it == '.' }.take(8) },
+                label = { Text("Verification Badge Fee ($ USD)") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal
+                ),
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        item {
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFA502).copy(alpha = 0.1f)),
@@ -2016,9 +2369,17 @@ fun AdminRewardRatesEditor(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("$parsedCredits Coins = $1.00 USD = ৳${String.format(Locale.US, "%.2f", parsedRate)} BDT", fontSize = 13.sp)
                     Text(
-                        "1 Coin = ৳${if (parsedCredits > 0) String.format(Locale.US, "%.4f", parsedRate / parsedCredits) else "0"} BDT",
+                        "Verification Badge Fee: $${String.format(Locale.US, "%.2f", badgeFee.toDoubleOrNull() ?: 0.0)} USD = ৳${String.format(Locale.US, "%.2f", (badgeFee.toDoubleOrNull() ?: 0.0) * parsedRate)} BDT",
+                        fontSize = 13.sp
+                    )
+                    Text("1 Coin = ৳${if (parsedCredits > 0) String.format(Locale.US, "%.4f", parsedRate / parsedCredits) else "0"} BDT",
                         fontSize = 12.sp,
-                        color = VynTextSecondary
+                        color = FlareTextSecondary
+                    )
+                    Text(
+                        "Badge fee in coins: ${kotlin.math.ceil((badgeFee.toDoubleOrNull() ?: 0.0) * parsedCredits).toInt().coerceAtLeast(1)} Coins",
+                        fontSize = 12.sp,
+                        color = FlareTextSecondary
                     )
                 }
             }
@@ -2029,7 +2390,8 @@ fun AdminRewardRatesEditor(
                     val newConfig = currentConfig.copy(
                         creditsPerDollar = parsedCredits.coerceAtLeast(1),
                         usdToBdtRate = parsedRate.coerceIn(1.0, 1000.0),
-                        minWithdrawalUSD = minWithdrawal.toDoubleOrNull()?.coerceAtLeast(0.1) ?: currentConfig.minWithdrawalUSD
+                        minWithdrawalUSD = minWithdrawal.toDoubleOrNull()?.coerceAtLeast(0.1) ?: currentConfig.minWithdrawalUSD,
+                        verificationBadgeFeeUSD = badgeFee.toDoubleOrNull()?.coerceIn(0.0, 10000.0) ?: currentConfig.verificationBadgeFeeUSD
                     )
                     viewModel.updateAdminConfig(newConfig)
                     Toast.makeText(context, "Exchange rates saved & synced ✅", Toast.LENGTH_SHORT).show()
@@ -2059,7 +2421,7 @@ fun AdminRewardGatewaysEditor(
     ) {
         item {
             Text("💳 Payment Gateways", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Text("Users can only withdraw through ENABLED gateways.", fontSize = 12.sp, color = VynTextSecondary)
+            Text("Users can only withdraw through ENABLED gateways.", fontSize = 12.sp, color = FlareTextSecondary)
         }
         item {
             AdminGatewayRow("bKash (বিকাশ)", currentConfig.isBkashEnabled) { enabled ->
@@ -2117,7 +2479,7 @@ fun AdminRewardGatewaysEditor(
                         Text(
                             "${method.type} · Min: $${String.format(Locale.US, "%.2f", method.minWithdrawalUSD)}",
                             fontSize = 11.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                     Switch(
@@ -2274,7 +2636,7 @@ fun AdminCoinPayoutRequestsView(
                         Text(
                             "${withdrawals.count { it.status == "PENDING" }} pending · ${withdrawals.size} total",
                             fontSize = 12.sp,
-                            color = VynTextSecondary
+                            color = FlareTextSecondary
                         )
                     }
                     TextButton(onClick = { isBusy = true; viewModel.refreshRewardServerData("") }) {
@@ -2289,7 +2651,7 @@ fun AdminCoinPayoutRequestsView(
                     Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text(
                             "No coin withdrawal requests found.\nTap Refresh to load requests from the server.",
-                            color = VynTextSecondary,
+                            color = FlareTextSecondary,
                             fontSize = 13.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
@@ -2379,10 +2741,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AdminCoinPayoutList(
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Gateway: ${req.method} · Account: ${req.accountNumber}", fontSize = 12.sp, color = VynTextSecondary)
-                Text("User: @${req.userHandle} · ${req.userEmail} · ${req.requestDate}", fontSize = 12.sp, color = VynTextSecondary)
+                Text("Gateway: ${req.method} · Account: ${req.accountNumber}", fontSize = 12.sp, color = FlareTextSecondary)
+                Text("User: @${req.userHandle} · ${req.userEmail} · ${req.requestDate}", fontSize = 12.sp, color = FlareTextSecondary)
                 if (req.transactionNote.isNotBlank()) {
-                    Text("Note: ${req.transactionNote}", fontSize = 11.sp, color = VynTextSecondary)
+                    Text("Note: ${req.transactionNote}", fontSize = 11.sp, color = FlareTextSecondary)
                 }
 
                 if (req.status == "PENDING") {

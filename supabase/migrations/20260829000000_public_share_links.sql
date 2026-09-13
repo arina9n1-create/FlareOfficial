@@ -1,4 +1,4 @@
--- VYN9 Public Share Links Migration
+-- FLAREOFFICIAL Public Share Links Migration
 -- 1. Add is_public columns
 ALTER TABLE public.app_users ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE public.posts     ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE;

@@ -1,18 +1,23 @@
-package com.example.ui.viewmodel
+﻿package com.example.ui.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.auth.AuthRepository
 import com.example.data.auth.AuthUserState
 import com.example.data.db.AppDatabase
 import com.example.data.model.*
+import com.example.data.notification.CallRingingService
+import com.example.data.notification.FlareFirebaseMessagingService
 import com.example.data.remote.SupabaseService
 import com.example.data.repository.SocialRepository
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 enum class MainTab {
     HOME,
@@ -38,7 +43,9 @@ enum class SettingsPage {
     ACCOUNT_SYNC,
     HELP_SUPPORT,
     TERMS_PRIVACY,
-    ABOUT_APP
+    ABOUT_APP,
+    MY_WALLET,
+    VERIFICATION_BADGE
 }
 
 data class LiveChatRoom(
@@ -58,7 +65,7 @@ data class LiveChatRoom(
     val isFavorite: Boolean = false
 )
 
-data class InstagramNote(
+data class FlareOfficialNote(
     val id: String,
     val name: String,
     val handle: String,
@@ -83,7 +90,9 @@ data class CallState(
     val audioVolume: Float = 0.65f,
     val callId: String = "",
     val remoteHandle: String = "",
-    val isOutgoing: Boolean = true
+    val isOutgoing: Boolean = true,
+    /** Real Agora channel for this call — used as the call_history key. */
+    val agoraChannel: String = ""
 )
 
 data class OnlineMember(
@@ -119,10 +128,18 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     val adminConfig = rewardRepository.adminConfig
     val rewardTasks = rewardRepository.tasks
     val withdrawals = rewardRepository.withdrawals
+    val totalPlatformCredits = rewardRepository.totalPlatformCredits
+    val walletSummary = rewardRepository.walletSummary
+    val walletTransactions = rewardRepository.walletTransactions
+    val platformOverview = rewardRepository.platformOverview
+    val adminUserEarnings = rewardRepository.userEarnings
+    val walletAuditLogs = rewardRepository.auditLogs
+    val walletFraudFlags = rewardRepository.fraudFlags
     private val _autoSyncEnabled = MutableStateFlow(false)
     val autoSyncEnabled: StateFlow<Boolean> = _autoSyncEnabled.asStateFlow()
     val referrals = rewardRepository.referrals
     val selectedCurrency = rewardRepository.selectedCurrency
+    val hasVerificationBadge = rewardRepository.hasVerificationBadge
 
     // Native Monetization States
     val monetizationSettings = monetizationRepository.settings
@@ -151,6 +168,9 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     private val _showRewardScreen = MutableStateFlow(false)
     val showRewardScreen: StateFlow<Boolean> = _showRewardScreen.asStateFlow()
 
+    private val _showWalletScreen = MutableStateFlow(false)
+    val showWalletScreen: StateFlow<Boolean> = _showWalletScreen.asStateFlow()
+
     private val _showAdminScreen = MutableStateFlow(false)
     val showAdminScreen: StateFlow<Boolean> = _showAdminScreen.asStateFlow()
 
@@ -175,12 +195,24 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     val currentUserEntity: StateFlow<AppUserEntity?> = _currentUserEntity.asStateFlow()
 
     val currentUserRole: StateFlow<UserRole> = _currentUserEntity.map { entity ->
-        UserRole.fromString(entity?.role)
+        if (entity?.handle?.equals("ceo", ignoreCase = true) == true) {
+            UserRole.SUPER_ADMIN
+        } else {
+            UserRole.fromString(entity?.role)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         UserRole.USER
     )
+
+    // ---- Realtime presence ----------------------------------------------------
+    // handle(lowercased) -> last_seen epoch millis, refreshed periodically.
+    // Declared here (before init) because init wires flows that read it.
+    private val _presenceByHandle = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val presenceByHandle: StateFlow<Map<String, Long>> = _presenceByHandle.asStateFlow()
+
+    private var presenceJob: kotlinx.coroutines.Job? = null
 
     // Friends Interaction States
     private val _selectedFriendDetail = MutableStateFlow<FriendEntity?>(null)
@@ -212,7 +244,7 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     private val _roomTranslationSettings = MutableStateFlow<Map<String, ChatTranslationSettings>>(emptyMap())
     val roomTranslationSettings: StateFlow<Map<String, ChatTranslationSettings>> = _roomTranslationSettings.asStateFlow()
 
-    private val _chatTheme = MutableStateFlow("Classic Instagram")
+    private val _chatTheme = MutableStateFlow("Classic FlareOfficial")
     val chatTheme: StateFlow<String> = _chatTheme.asStateFlow()
 
     private val _disappearingDuration = MutableStateFlow("Off")
@@ -229,14 +261,18 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     private val _availableRooms = MutableStateFlow<List<LiveChatRoom>>(emptyList())
     val availableRooms: StateFlow<List<LiveChatRoom>> = _availableRooms.asStateFlow()
 
+    /** DM rooms opened from search/profile that have no messages yet â€” kept so
+     *  the chat thread doesn't fall back to a wrong (or blank) room. */
+    private val _pinnedDmRooms = MutableStateFlow<List<LiveChatRoom>>(emptyList())
+
     private val _isInChatThread = MutableStateFlow(false)
     val isInChatThread: StateFlow<Boolean> = _isInChatThread.asStateFlow()
 
-    /** True when the VYN NUMBER or Personal ID full-screen chat overlay is open. */
+    /** True when the FLARE NUMBER or Personal ID full-screen chat overlay is open. */
     private val _chatOverlayOpen = MutableStateFlow(false)
     val chatOverlayOpen: StateFlow<Boolean> = _chatOverlayOpen.asStateFlow()
 
-    /** Called by ChatScreen when a VYN NUMBER / Personal ID overlay opens or closes. */
+    /** Called by ChatScreen when a FLARE NUMBER / Personal ID overlay opens or closes. */
     fun setChatOverlayOpen(open: Boolean) {
         _chatOverlayOpen.value = open
     }
@@ -247,8 +283,8 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     private val _directInboxTab = MutableStateFlow("PRIMARY") // "PRIMARY", "GENERAL", "CHANNELS", "REQUESTS"
     val directInboxTab: StateFlow<String> = _directInboxTab.asStateFlow()
 
-    private val _notesList = MutableStateFlow<List<InstagramNote>>(emptyList())
-    val notesList: StateFlow<List<InstagramNote>> = _notesList.asStateFlow()
+    private val _notesList = MutableStateFlow<List<FlareOfficialNote>>(emptyList())
+    val notesList: StateFlow<List<FlareOfficialNote>> = _notesList.asStateFlow()
 
     private val _activeCallState = MutableStateFlow<CallState?>(null)
     val activeCallState: StateFlow<CallState?> = _activeCallState.asStateFlow()
@@ -256,8 +292,16 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     private val _incomingCall = MutableStateFlow<CallSignalEntity?>(null)
     val incomingCall: StateFlow<CallSignalEntity?> = _incomingCall.asStateFlow()
 
-    val webRtcCallManager: com.example.media.WebRtcCallManager =
-        com.example.media.WebRtcCallManager(getApplication())
+    val agoraCallManager: com.example.media.AgoraCallManager =
+        com.example.media.AgoraCallManager(getApplication())
+
+    private val agoraTokenService by lazy {
+        com.example.data.remote.AgoraTokenService(getApplication())
+    }
+
+    private val pushNotificationService by lazy {
+        com.example.data.remote.PushNotificationService(getApplication())
+    }
 
     private var currentCallPollJob: kotlinx.coroutines.Job? = null
 
@@ -300,6 +344,59 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setActiveReelPage(page: Int) {
         _activeReelPage.value = page
+    }
+
+    private val _scrollToReelId = MutableStateFlow<String?>(null)
+    val scrollToReelId: StateFlow<String?> = _scrollToReelId.asStateFlow()
+
+    private val _scrollToPostId = MutableStateFlow<Long?>(null)
+    val scrollToPostId: StateFlow<Long?> = _scrollToPostId.asStateFlow()
+
+    fun openReel(reelRemoteId: String) {
+        _scrollToReelId.value = reelRemoteId
+        setTab(MainTab.REELS)
+    }
+
+    fun openReelInFeed(reelRemoteId: String) {
+        openReel(reelRemoteId)
+        closeAdminScreen()
+    }
+
+    fun openPostInFeed(postId: Long) {
+        _scrollToPostId.value = postId
+        setTab(MainTab.HOME)
+        closeAdminScreen()
+    }
+
+    fun updateUserBalance(userHandle: String, newBalance: Int, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            try {
+                val success = rewardRepository.rewardManager.updateUserBalanceRemote(userHandle, newBalance)
+                if (success) {
+                    onResult(true, "Balance updated successfully ✨")
+                } else {
+                    onResult(false, "Failed to update balance on server")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    suspend fun fetchUserBalance(userHandle: String): Int {
+        return try {
+            rewardRepository.rewardManager.fetchRemoteWallet(userHandle)?.totalCredits ?: 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    fun onReelScrollHandled() {
+        _scrollToReelId.value = null
+    }
+
+    fun onPostScrollHandled() {
+        _scrollToPostId.value = null
     }
 
     fun openActiveReelComments() {
@@ -427,10 +524,12 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
         android.util.Log.d("SocialViewModel", "Starting Production Init")
         val database = AppDatabase.getDatabase(application)
         val dao = database.socialDao()
-        repository = SocialRepository(dao, supabaseService)
+        repository = SocialRepository(dao, supabaseService, application)
 
 
-        posts = repository.allPosts.stateIn(
+        posts = repository.allPosts.map { list ->
+            list.filter { !com.example.util.MediaStorageResolver.isBrokenLegacyB2(it.postImageRes, it.storagePath) }
+        }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
             emptyList()
@@ -444,7 +543,9 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
             UserProfileEntity()
         )
 
-        stories = repository.allStories.stateIn(
+        stories = repository.allStories.map { list ->
+            list.filter { !com.example.util.MediaStorageResolver.isBrokenLegacyB2(it.imageRes, it.storagePath) }
+        }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
             emptyList()
@@ -464,7 +565,13 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
 
         @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
         chatMessages = _activeRoomId.flatMapLatest { roomId ->
-            repository.getChatMessagesForRoom(roomId)
+            repository.getChatMessagesForRoom(roomId).map { list ->
+                list.map { msg ->
+                    if (msg.mediaType == "image" && com.example.util.MediaStorageResolver.isBrokenLegacyB2(msg.mediaUrl, msg.storagePath)) {
+                        msg.copy(mediaType = "text", mediaUrl = null, storagePath = null, messageText = msg.messageText.ifBlank { "[Broken Media Removed]" })
+                    } else msg
+                }
+            }
         }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
@@ -489,29 +596,40 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
             emptyList()
         )
 
-        allUsers = repository.allUsers.stateIn(
+        allUsers = repository.allUsers.map { list ->
+            list.filter { user ->
+                val h = user.handle.lowercase()
+                val isCeo = h == "ceo"
+                val isBot = h.contains("runner") || h.contains("scan")
+                isCeo || !isBot
+            }
+        }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
             emptyList()
         )
 
-        allReels = repository.allReels.stateIn(
+        allReels = repository.allReels.map { list ->
+            list.filter { !com.example.util.MediaStorageResolver.isBrokenLegacyB2(it.videoUrl, it.storagePath) }
+        }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
             emptyList()
         )
 
-        onlineMembers = allUsers.map { users ->
+        onlineMembers = kotlinx.coroutines.flow.combine(allUsers, _presenceByHandle) { users, presence ->
+            val now = System.currentTimeMillis()
             users.filter { it.uid != _currentUserEntity.value?.uid }.map { user ->
+                val lastSeen = presence[user.handle.lowercase().trim()]
                 OnlineMember(
                     id = user.uid,
                     name = user.name,
                     handle = user.handle,
                     avatarType = user.avatarType,
                     avatarPath = user.avatarPath,
-                    status = "Active now",
+                    status = com.example.util.Presence.label(lastSeen, now),
                     isVerified = user.role == "SUPER_ADMIN",
-                    isOnline = true
+                    isOnline = com.example.util.Presence.isOnline(lastSeen, now)
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -554,7 +672,7 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
                         } catch (e: Exception) {
                             // Don't flag network errors when the flow was merely cancelled by a new query.
                             if (e !is kotlinx.coroutines.CancellationException) {
-                                _userSearchError.value = "Search is offline — showing nearby people"
+                                _userSearchError.value = "Search is offline â€” showing nearby people"
                             }
                         } finally {
                             _userSearchLoading.value = false
@@ -563,45 +681,59 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
         combine(allUsers, repository.chatMessages) { users, messages ->
-            val myHandle = profile.value.handle.lowercase().trim()
-            if (myHandle.isBlank()) return@combine emptyList<LiveChatRoom>()
-
-            // 1. Group ALL cached messages by their canonical DM room or group ID.
-            // This collapses legacy/fragmented threads into one entry per conversation.
-            val normalizedMessages = normalizeIncomingMessages(messages)
-
-            val latestMessagesByRoom = normalizedMessages
-                .groupBy { it.roomId }
-                .mapValues { (_, msgs) -> msgs.maxByOrNull { it.timestamp } }
-
-            val roomIds = latestMessagesByRoom.keys.toMutableList()
-
-            roomIds.mapNotNull { roomId ->
-                if (roomId.startsWith("dm_")) {
-                    val partner = directPartnerHandle(roomId)
-                    if (partner.isBlank()) return@mapNotNull null
-                    
-                    val user = users.find { it.handle.equals(partner, ignoreCase = true) }
-                    val latest = latestMessagesByRoom[roomId]
-                    
-                    LiveChatRoom(
-                        id = roomId,
-                        title = user?.name ?: partner,
-                        subtitle = latest?.messageText?.take(35) ?: "@$partner",
-                        type = "DM",
-                        avatarType = user?.avatarType ?: "default",
-                        verified = user?.role == "SUPER_ADMIN",
-                        lastMessageTime = latest?.time ?: "Just now",
-                        unreadCount = normalizedMessages.count { it.roomId == roomId && !it.isRead && !it.isFromMe }
-                    )
-                } else {
-                    null // Ignore malformed rooms
+            users to messages
+        }.flatMapLatest { (users, messages) ->
+            flow {
+                val myHandle = profile.value.handle.lowercase().trim()
+                if (myHandle.isBlank()) {
+                    emit(emptyList<LiveChatRoom>())
+                    return@flow
                 }
+
+                // 1. Group ALL cached messages by their canonical DM room or group ID.
+                // This collapses legacy/fragmented threads into one entry per conversation.
+                val normalizedMessages = normalizeIncomingMessages(messages)
+
+                val latestMessagesByRoom = normalizedMessages
+                    .groupBy { it.roomId }
+                    .mapValues { (_, msgs) -> msgs.maxByOrNull { it.timestamp } }
+
+                val roomIds = latestMessagesByRoom.keys.toMutableList()
+
+                val roomsList = roomIds.mapNotNull { roomId ->
+                    if (roomId.startsWith("dm_")) {
+                        val partner = directPartnerHandle(roomId)
+                        if (partner.isBlank()) return@mapNotNull null
+                        
+                        val user = users.find { it.handle.equals(partner, ignoreCase = true) }
+                        val latest = latestMessagesByRoom[roomId]
+                        
+                        LiveChatRoom(
+                            id = roomId,
+                            title = user?.name ?: partner,
+                            subtitle = latest?.messageText?.take(35) ?: "@$partner",
+                            type = "DM",
+                            avatarType = user?.avatarType ?: "default",
+                            verified = user?.role == "SUPER_ADMIN",
+                            lastMessageTime = latest?.time ?: "Just now",
+                            unreadCount = normalizedMessages.count { it.roomId == roomId && !it.isRead && !it.isFromMe }
+                        )
+                    } else {
+                        null // Ignore malformed rooms
+                    }
+                }
+                emit(roomsList)
             }
         }.onEach { rooms ->
-            _availableRooms.value = rooms
+            // Keep DM rooms pinned from search/profile so freshly-opened threads
+            // (with no messages yet) don't disappear from the room list.
+            val pinned = _pinnedDmRooms.value.filter { p -> rooms.none { it.id == p.id } }
+            _availableRooms.value = rooms + pinned
         }.launchIn(viewModelScope)
+
+        startPresenceLoop()
 
         viewModelScope.launch {
             android.util.Log.d("SocialViewModel", "Initializing Supabase Connection strictly...")
@@ -730,16 +862,21 @@ else {
             }
         }
 
-        // Real WebRTC call signalling: react to incoming OFFERING signals and to ICE state changes.
-        webRtcCallManager.setConnectionStateListener { state ->
+        // Real Agora call signalling: react to incoming OFFERING signals and engine state changes.
+        agoraCallManager.setConnectionStateListener { state ->
             val current = _activeCallState.value
             if (current == null) return@setConnectionStateListener
             when (state) {
-                "Connected" -> _activeCallState.value = current.copy(status = "Connected")
+                "Connected" -> {
+                    _activeCallState.value = current.copy(status = "Connected")
+                    startCallDurationTicker()
+                }
+                "Reconnecting…" -> _activeCallState.value = current.copy(status = "Reconnecting…")
+                "Remote ended" -> endCall()
                 "Failed" -> {
                     _activeCallState.value = current.copy(status = "Call failed")
                     currentCallPollJob?.cancel()
-                    webRtcCallManager.endCall()
+                    agoraCallManager.endCall()
                     viewModelScope.launch {
                         delay(300)
                         _activeCallState.value = null
@@ -787,7 +924,8 @@ else {
                 runCatching { repository.healLegacyChatRooms(myHandle) }
                 val notifiedRemoteIds = mutableSetOf<String>()
                 supabaseService.observeMyDirectMessagesRealtime(myHandle).collect { messages ->
-                    val synced = repository.syncChatMessagesFromSupabase(normalizeIncomingMessages(messages))
+                    val normalized = normalizeIncomingMessages(messages)
+                    val synced = repository.syncChatMessagesFromSupabase(normalized)
                     for (message in synced) {
                         val isMine = message.senderHandle.equals(myHandle, ignoreCase = true)
                         val key = message.remoteId.ifBlank { "${message.roomId}_${message.timestamp}_${message.senderHandle}" }
@@ -833,6 +971,9 @@ else {
                         referralCode = referralCode?.takeIf { it.isNotBlank() }
                     )
 
+                    // Register this device's FCM token for push notifications.
+                    FlareFirebaseMessagingService.fetchAndUploadToken(getApplication())
+
                     onSuccess()
                 } else {
                     onError(res.exceptionOrNull()?.localizedMessage ?: "Failed to sign up")
@@ -861,6 +1002,9 @@ else {
                     // Sync daily activity & streak in Firestore
                     rewardRepository.syncUserLogin(handle, email)
 
+                    // Register this device's FCM token for push notifications.
+                    FlareFirebaseMessagingService.fetchAndUploadToken(getApplication())
+
                     onSuccess()
                 } else {
                     onError(res.exceptionOrNull()?.localizedMessage ?: "Failed to sign in")
@@ -887,29 +1031,41 @@ else {
     fun canAccessAdminPanel(): Boolean {
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.SUPER_ADMIN ||
+        if (role == UserRole.SUPER_ADMIN) return true
+        
+        return entity?.canManageUsers == true ||
+                entity?.canManageMonetization == true ||
+                entity?.canManageRewards == true ||
+                entity?.canCleanStorage == true ||
+                entity?.canDeletePosts == true ||
+                entity?.canEditPosts == true ||
+                entity?.canModerateComments == true ||
+                entity?.canManageChats == true ||
+                entity?.canViewReports == true ||
+                entity?.canReviewReports == true ||
+                entity?.canGiveWarning == true ||
+                entity?.canDeleteReel == true ||
+                entity?.canDeleteVideo == true ||
+                entity?.canSuspendUser == true ||
+                entity?.canBanUser == true ||
+                entity?.canRemoveWarning == true ||
+                entity?.canViewWarningHistory == true ||
+                entity?.canViewActivityLog == true ||
                 role == UserRole.ADMIN ||
                 role == UserRole.MANAGER ||
-                role == UserRole.MODERATOR ||
-                entity?.canManageUsers == true ||
-                entity?.canManageMonetization == true ||
-                entity?.canManageRewards == true
+                role == UserRole.MODERATOR
     }
 
     fun canDeletePost(post: PostEntity): Boolean {
-        // Super Admin can delete anything
-        if (currentUserRole.value == UserRole.SUPER_ADMIN) return true
-        
         val isOwn = post.userHandle.equals(profile.value.handle, ignoreCase = true) ||
                 post.username.equals(profile.value.name, ignoreCase = true)
         if (isOwn) return true
 
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.ADMIN ||
-                role == UserRole.MANAGER ||
-                role == UserRole.MODERATOR ||
-                entity?.canDeletePosts == true
+        
+        // Super Admin or explicit permission check
+        return role == UserRole.SUPER_ADMIN || entity?.canDeletePosts == true
     }
 
     fun canEditPost(post: PostEntity): Boolean {
@@ -919,15 +1075,14 @@ else {
 
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.SUPER_ADMIN ||
-                role == UserRole.ADMIN ||
-                entity?.canEditPosts == true
+        
+        return role == UserRole.SUPER_ADMIN || entity?.canEditPosts == true
     }
 
     fun deletePost(post: PostEntity) {
         viewModelScope.launch {
             try {
-                // HARD DELETE: Repository now handles B2 + Supabase + Room cleanup
+                // HARD DELETE: Repository now handles R2 + Supabase + Room cleanup
                 repository.deletePost(post.id)
                 android.widget.Toast.makeText(getApplication(), "Post deleted ✨", android.widget.Toast.LENGTH_SHORT).show()
                 
@@ -970,6 +1125,26 @@ else {
         }
     }
 
+    fun updateReel(reel: ReelEntity, newCaption: String, newMusic: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val updated = reel.copy(caption = newCaption, music = newMusic)
+            repository.updateReel(updated)
+                .onSuccess {
+                    onResult(true, "Reel updated successfully")
+                }
+                .onFailure {
+                    android.util.Log.e("SocialViewModel", "Reel update failed", it)
+                    onResult(false, it.message ?: "Could not update reel remotely")
+                }
+        }
+    }
+
+    fun refreshReelsFromSupabase() {
+        viewModelScope.launch {
+            repository.refreshReelsFromSupabase()
+        }
+    }
+
     fun deleteStory(story: StoryEntity) {
         viewModelScope.launch {
             runCatching { repository.deleteStory(story) }
@@ -988,7 +1163,7 @@ else {
         viewModelScope.launch {
             try {
                 repository.deleteProfileMedia(profile.value, deleteAvatar = true)
-                android.widget.Toast.makeText(getApplication(), "Profile photo deleted ✨", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(getApplication(), "Profile photo deleted âœ¨", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Profile photo delete failed", e)
                 android.widget.Toast.makeText(getApplication(), "Delete failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
@@ -1007,7 +1182,7 @@ else {
         viewModelScope.launch {
             try {
                 repository.deleteProfileMedia(profile.value, deleteAvatar = false)
-                android.widget.Toast.makeText(getApplication(), "Cover photo deleted ✨", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(getApplication(), "Cover photo deleted âœ¨", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Cover photo delete failed", e)
                 android.widget.Toast.makeText(getApplication(), "Delete failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
@@ -1018,38 +1193,31 @@ else {
     fun canModerateComments(): Boolean {
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.SUPER_ADMIN ||
-                role == UserRole.ADMIN ||
-                role == UserRole.MANAGER ||
-                role == UserRole.MODERATOR ||
-                entity?.canModerateComments == true
+        return role == UserRole.SUPER_ADMIN || entity?.canModerateComments == true
     }
 
     fun canManageUsers(): Boolean {
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.SUPER_ADMIN ||
-                role == UserRole.ADMIN ||
-                entity?.canManageUsers == true
+        return role == UserRole.SUPER_ADMIN || entity?.canManageUsers == true
     }
 
     fun canManageMonetization(): Boolean {
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.SUPER_ADMIN ||
-                role == UserRole.ADMIN ||
-                role == UserRole.MANAGER ||
-                entity?.canManageMonetization == true
+        return role == UserRole.SUPER_ADMIN || entity?.canManageMonetization == true
     }
 
     fun canManageRewards(): Boolean {
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.SUPER_ADMIN ||
-                role == UserRole.ADMIN ||
-                role == UserRole.MANAGER ||
-                entity?.canManageRewards == true
+        return role == UserRole.SUPER_ADMIN || entity?.canManageRewards == true
     }
+
+    fun canManageRewardRules() = isSuperAdmin() || _currentUserEntity.value?.canManageRewardRules == true
+    fun canManageRewardRates() = isSuperAdmin() || _currentUserEntity.value?.canManageRewardRates == true
+    fun canManageRewardGateways() = isSuperAdmin() || _currentUserEntity.value?.canManageRewardGateways == true
+    fun canProcessPayouts() = isSuperAdmin() || _currentUserEntity.value?.canProcessPayouts == true
 
     fun canCleanStorage(): Boolean {
         val role = currentUserRole.value
@@ -1061,11 +1229,198 @@ else {
     fun canModerateContent(): Boolean {
         val role = currentUserRole.value
         val entity = _currentUserEntity.value
-        return role == UserRole.SUPER_ADMIN ||
-                role == UserRole.ADMIN ||
-                role == UserRole.MANAGER ||
-                role == UserRole.MODERATOR ||
-                entity?.canDeletePosts == true
+        return role == UserRole.SUPER_ADMIN || 
+                entity?.canDeletePosts == true || 
+                entity?.canEditPosts == true ||
+                entity?.canModerateComments == true ||
+                entity?.canDeleteReel == true ||
+                entity?.canDeleteVideo == true ||
+                entity?.canViewReports == true ||
+                entity?.canReviewReports == true ||
+                entity?.canGiveWarning == true ||
+                entity?.canSuspendUser == true ||
+                entity?.canBanUser == true ||
+                entity?.canRemoveWarning == true ||
+                entity?.canViewWarningHistory == true ||
+                entity?.canViewActivityLog == true
+    }
+
+    // --- Granular MODERATION permissions (server-authoritative; re-checked by SECURITY DEFINER RPCs) ---
+    private fun evalModPerm(name: String): Boolean {
+        val role = currentUserRole.value
+        if (role == UserRole.SUPER_ADMIN) return true
+        val e = _currentUserEntity.value ?: return false
+        return when (name) {
+            "can_view_reports" -> e.canViewReports
+            "can_review_reports" -> e.canReviewReports
+            "can_give_warning" -> e.canGiveWarning
+            "can_delete_posts" -> e.canDeletePosts
+            "can_delete_reel" -> e.canDeleteReel
+            "can_delete_video" -> e.canDeleteVideo
+            "can_suspend_user" -> e.canSuspendUser
+            "can_ban_user" -> e.canBanUser
+            "can_remove_warning" -> e.canRemoveWarning
+            "can_view_warning_history" -> e.canViewWarningHistory
+            "can_view_activity_log" -> e.canViewActivityLog
+            else -> false
+        }
+    }
+    fun canViewReports() = evalModPerm("can_view_reports")
+    fun canReviewReports() = evalModPerm("can_review_reports")
+    fun canGiveWarning() = evalModPerm("can_give_warning")
+    fun canDeletePosts() = evalModPerm("can_delete_posts")
+    fun canDeleteReel() = evalModPerm("can_delete_reel")
+    fun canDeleteVideo() = evalModPerm("can_delete_video")
+    fun canSuspendUser() = evalModPerm("can_suspend_user")
+    fun canBanUser() = evalModPerm("can_ban_user")
+    fun canRemoveWarning() = evalModPerm("can_remove_warning")
+    fun canViewWarningHistory() = evalModPerm("can_view_warning_history")
+    fun canViewActivityLog() = evalModPerm("can_view_activity_log")
+
+    // --- Moderation data state flows ---
+    private val _moderationReports = MutableStateFlow<List<ModerationReport>>(emptyList())
+    private val _moderationWarnings = MutableStateFlow<List<ModerationWarning>>(emptyList())
+    private val _moderationActivity = MutableStateFlow<List<ModerationActivityItem>>(emptyList())
+    private val _moderationLoading = MutableStateFlow(false)
+    val moderationReports: StateFlow<List<ModerationReport>> = _moderationReports.asStateFlow()
+    val moderationWarnings: StateFlow<List<ModerationWarning>> = _moderationWarnings.asStateFlow()
+    val moderationActivity: StateFlow<List<ModerationActivityItem>> = _moderationActivity.asStateFlow()
+    val moderationLoading: StateFlow<Boolean> = _moderationLoading.asStateFlow()
+
+    fun refreshModerationReports(status: String = "", fromMs: Long = 0, toMs: Long = 0, search: String = "", limit: Int = 200, offset: Int = 0) {
+        viewModelScope.launch {
+            _moderationLoading.value = true
+            try {
+                val list = supabaseService.fetchModerationReports(status, fromMs, toMs, search, limit, offset)
+                _moderationReports.value = list
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "moderationReports refresh failed", e)
+            } finally {
+                _moderationLoading.value = false
+            }
+        }
+    }
+
+    fun refreshModerationWarnings(limit: Int = 500) {
+        viewModelScope.launch {
+            try { _moderationWarnings.value = supabaseService.fetchAllModerationWarnings(limit) }
+            catch (e: Exception) { android.util.Log.e("SocialViewModel", "moderationWarnings refresh failed", e) }
+        }
+    }
+
+    fun refreshModerationActivity(fromMs: Long = 0, toMs: Long = 0, limit: Int = 200) {
+        viewModelScope.launch {
+            try { _moderationActivity.value = supabaseService.fetchModerationActivity(fromMs, toMs, limit) }
+            catch (e: Exception) { android.util.Log.e("SocialViewModel", "moderationActivity refresh failed", e) }
+        }
+    }
+
+    fun refreshUserBans() {
+        viewModelScope.launch {
+            try {
+                val users = supabaseService.fetchAllUsers()
+                if (users.isNotEmpty()) repository.syncUsersFromSupabase(users)
+            } catch (e: Exception) { android.util.Log.e("SocialViewModel", "refreshUserBans failed", e) }
+        }
+    }
+// --- Moderation actions (server enforces permissions; client shows friendly result) ---
+
+    fun moderationIssueWarning(userId: String, userHandle: String, reason: String, contentType: String = "", contentId: String = "", reportId: String = "", onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.issueWarning(userId, userHandle, reason, contentType, contentId, reportId)
+            showModResult(r, "Warning issued ⚠️")
+            refreshModerationWarnings(); refreshModerationReports()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationRemoveWarning(warningId: String, reason: String = "", onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.removeWarning(warningId, reason)
+            showModResult(r, "Warning removed ✅")
+            refreshModerationWarnings()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationReviewReport(reportId: String, status: String, reason: String = "", onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.reviewReport(reportId, status, reason)
+            showModResult(r, "Report updated ✅")
+            refreshModerationReports()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationDeletePost(post: PostEntity, reason: String = "", reportId: String = "", onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.moderationDeletePost(post.remoteId, reason, reportId)
+            if (r.success) runCatching { repository.deletePost(post.id) }
+            showModResult(r, "Post deleted ðŸ—‘ï¸")
+            refreshModerationReports()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationDeleteReel(reel: ReelEntity, reason: String = "", reportId: String = "", onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.moderationDeleteReel(reel.remoteId, reason, reportId)
+            if (r.success) runCatching { repository.deleteReel(reel.id) }
+            showModResult(r, "Reel deleted ðŸ—‘ï¸")
+            refreshModerationReports()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationDeleteVideo(reel: ReelEntity, reason: String = "", reportId: String = "", onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.moderationDeleteVideo(reel.remoteId, reason, reportId)
+            if (r.success) runCatching { repository.deleteReel(reel.id) }
+            showModResult(r, "Video deleted ðŸ—‘ï¸")
+            refreshModerationReports()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationSuspendUser(targetUid: String, reason: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.suspendUser(targetUid, reason)
+            showModResult(r, "User suspended ðŸš«")
+            refreshUserBans()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationBanUser(targetUid: String, reason: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.banUserMod(targetUid, reason)
+            showModResult(r, "User banned ðŸš«")
+            refreshUserBans()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun moderationUnbanUser(targetUid: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.unbanUserMod(targetUid)
+            showModResult(r, "User unbanned ✅")
+            refreshUserBans()
+            onResult(r.success, r.message)
+        }
+    }
+
+    fun setModerationPermission(targetUid: String, perm: String, value: Boolean, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val r = supabaseService.setModPermission(targetUid, perm, value)
+            showModResult(r, if (value) "Permission granted ✅" else "Permission revoked ✅")
+            onResult(r.success, r.message)
+        }
+    }
+
+    private fun showModResult(r: ModerationActionResult, successToast: String) {
+        val app: Application = getApplication()
+        if (r.success) android.widget.Toast.makeText(app, successToast, android.widget.Toast.LENGTH_SHORT).show()
+        else android.widget.Toast.makeText(app, r.message, android.widget.Toast.LENGTH_LONG).show()
     }
 
     fun updateUserRole(uid: String, newRole: UserRole) {
@@ -1090,7 +1445,21 @@ else {
         canManageChats: Boolean,
         canManageMonetization: Boolean,
         canManageRewards: Boolean,
-        canCleanStorage: Boolean
+        canManageRewardRules: Boolean = false,
+        canManageRewardRates: Boolean = false,
+        canManageRewardGateways: Boolean = false,
+        canProcessPayouts: Boolean = false,
+        canCleanStorage: Boolean,
+        canViewReports: Boolean = false,
+        canReviewReports: Boolean = false,
+        canGiveWarning: Boolean = false,
+        canDeleteReel: Boolean = false,
+        canDeleteVideo: Boolean = false,
+        canSuspendUser: Boolean = false,
+        canBanUser: Boolean = false,
+        canRemoveWarning: Boolean = false,
+        canViewWarningHistory: Boolean = false,
+        canViewActivityLog: Boolean = false
     ) {
         viewModelScope.launch {
             try {
@@ -1104,7 +1473,21 @@ else {
                     canManageChats = canManageChats,
                     canManageMonetization = canManageMonetization,
                     canManageRewards = canManageRewards,
-                    canCleanStorage = canCleanStorage
+                    canManageRewardRules = canManageRewardRules,
+                    canManageRewardRates = canManageRewardRates,
+                    canManageRewardGateways = canManageRewardGateways,
+                    canProcessPayouts = canProcessPayouts,
+                    canCleanStorage = canCleanStorage,
+                    canViewReports = canViewReports,
+                    canReviewReports = canReviewReports,
+                    canGiveWarning = canGiveWarning,
+                    canDeleteReel = canDeleteReel,
+                    canDeleteVideo = canDeleteVideo,
+                    canSuspendUser = canSuspendUser,
+                    canBanUser = canBanUser,
+                    canRemoveWarning = canRemoveWarning,
+                    canViewWarningHistory = canViewWarningHistory,
+                    canViewActivityLog = canViewActivityLog
                 )
                 android.widget.Toast.makeText(getApplication(), "Permissions saved successfully! ⚙️", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -1151,6 +1534,20 @@ else {
     }
 
     // System Data Cleanup (Super Admin full control)
+    fun deleteAllUsersExcept(ceoHandle: String, onResult: (Int?) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val deleted = repository.deleteAllUsersExcept(ceoHandle)
+                android.widget.Toast.makeText(getApplication(), "Deleted $deleted account(s). Only @$ceoHandle remains.", android.widget.Toast.LENGTH_LONG).show()
+                onResult(deleted)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Delete all except CEO failed", e)
+                android.widget.Toast.makeText(getApplication(), "Delete failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                onResult(null)
+            }
+        }
+    }
+
     fun cleanAllPosts() {
         viewModelScope.launch {
             repository.cleanAllPosts()
@@ -1207,7 +1604,7 @@ else {
         }
     }
 
-    fun toggleReelLike(reel: ReelEntity) {
+    fun toggleReelLike(reel: ReelEntity, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             try {
                 val uid = userAuthState.value.uid
@@ -1217,6 +1614,7 @@ else {
                 }
                 android.util.Log.d("SocialViewModel", "Toggling like for reel: ${reel.remoteId} by user: $uid")
                 repository.toggleReelLike(reel, uid)
+                onSuccess()
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Reel Like Error for reel ${reel.remoteId}", e)
                 val msg = e.message ?: "network error"
@@ -1225,9 +1623,49 @@ else {
         }
     }
 
-    fun addReelComment(reelId: Long, text: String) {
+    fun toggleReelSave(reel: ReelEntity) {
         viewModelScope.launch {
-            repository.addReelComment(reelId, text, profile.value)
+            try {
+                val uid = userAuthState.value.uid
+                if (uid.isBlank()) {
+                    android.widget.Toast.makeText(getApplication(), "Please login to save reels", android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                repository.toggleReelSave(reel, uid)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Reel Save Error", e)
+                android.widget.Toast.makeText(getApplication(), "Save failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun toggleReelRepost(reel: ReelEntity) {
+        viewModelScope.launch {
+            try {
+                val uid = userAuthState.value.uid
+                if (uid.isBlank()) {
+                    android.widget.Toast.makeText(getApplication(), "Please login to repost reels", android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                repository.toggleReelRepost(reel, uid)
+                android.widget.Toast.makeText(getApplication(), "Reel reposted!", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Reel Repost Error", e)
+                android.widget.Toast.makeText(getApplication(), "Repost failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun addReelComment(reelId: Long, text: String, ownerHandle: String = "", onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                repository.addReelComment(reelId, text, profile.value, ownerHandle)
+                onSuccess()
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Reel Comment Error for reel $reelId", e)
+                val msg = e.message ?: "network error"
+                android.widget.Toast.makeText(getApplication(), "Comment failed: $msg", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -1279,7 +1717,7 @@ else {
         return repository.getComments(postId)
     }
 
-    fun addComment(postId: Long, text: String) {
+    fun addComment(postId: Long, text: String, ownerHandle: String = "") {
         if (text.isBlank()) return
         viewModelScope.launch {
             try {
@@ -1289,7 +1727,7 @@ else {
                     return@launch
                 }
                 android.util.Log.d("SocialViewModel", "Adding comment to post $postId by $uid: $text")
-                repository.addComment(postId, text.trim(), profile.value)
+                repository.addComment(postId, text.trim(), profile.value, ownerHandle)
                 android.widget.Toast.makeText(getApplication(), "Comment posted! 💬", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Comment Error for post $postId", e)
@@ -1335,6 +1773,32 @@ else {
 
     fun openNotifications() {
         _showNotifications.value = true
+    }
+
+    /**
+     * Called from the activity when the app returns to the foreground (e.g. after
+     * being backgrounded / swiped away from Recent Apps). Re-syncs missed data —
+     * notably notifications — straight from Supabase, so push messages that were
+     * missed while the Firebase connection was suspended are still reflected in
+     * the in-app notifications list and unread badge once reopened.
+     *
+     * All observables below are already running in the background via
+     * [startRealtimeObservers]; this is an eager one-shot pull on resume so the
+     * UI reflects fresh data immediately instead of waiting up to 5 s for the
+     * polling tick.
+     */
+    fun resumeAppSync() {
+        viewModelScope.launch {
+            val myHandle = profile.value.handle
+            if (myHandle.isBlank()) return@launch
+            try {
+                val notifs = supabaseService.fetchNotifications(myHandle)
+                repository.syncNotificationsFromSupabase(notifs)
+                Log.d("SocialViewModel", "Resume sync pulled ${notifs.size} notifications")
+            } catch (t: Throwable) {
+                Log.e("SocialViewModel", "Resume notification sync failed", t)
+            }
+        }
     }
 
     fun viewUserProfile(handle: String) {
@@ -1408,6 +1872,21 @@ else {
 
     // ---- Follow system: search-follow, follow-back, state ----
 
+    /**
+     * Fire-and-forget follow push to the newly-followed user. The Edge Function
+     * re-verifies the follow row server-side; failures never affect the UI flow.
+     */
+    private fun notifyFollowPush(receiverUid: String) {
+        if (receiverUid.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                pushNotificationService.notifyFollow(receiverUid)
+            }.onFailure {
+                android.util.Log.w("SocialViewModel", "Follow push skipped", it)
+            }
+        }
+    }
+
     val followState get() = repository.followState
 
     // Handles I currently follow (reactive; used by the notification Follow Back buttons).
@@ -1415,13 +1894,68 @@ else {
         .map { list -> list.filter { it.isFollowing }.map { it.handle.lowercase() }.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
+    // ---- Realtime presence (loop + refresh) -----------------------------------
+
+    /** Starts the shared heartbeat/poll loop (idempotent). */
+    fun startPresenceLoop() {
+        if (presenceJob?.isActive == true) return
+        presenceJob = viewModelScope.launch {
+            while (kotlin.coroutines.coroutineContext.isActive) {
+                refreshPresenceNow()
+                kotlinx.coroutines.delay(20_000)
+            }
+        }
+    }
+
+    /** One presence round: heartbeat for me + last_seen fetch for everyone I know. */
+    fun refreshPresenceNow() {
+        viewModelScope.launch {
+            try {
+                repository.touchMyPresence()
+                val handles = buildList {
+                    addAll(repository.friends.first().map { it.handle })
+                    selectedFriendDetail.value?.let { add(it.handle) }
+                    _activeRoomId.value?.let { room ->
+                        if (room.startsWith("dm_")) add(directPartnerHandle(room))
+                    }
+                }
+                if (handles.isEmpty()) return@launch
+                val presence = repository.fetchPresence(handles)
+                _presenceByHandle.value = presence
+                repository.applyPresence(presence)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "presence refresh failed", e)
+            }
+        }
+    }
+
+    // ---- Viewed user's content (posts & reels for the open profile) -----------
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val viewedUserPosts: StateFlow<List<PostEntity>> = _selectedFriendDetail
+        .flatMapLatest { f ->
+            if (f == null) kotlinx.coroutines.flow.flowOf(emptyList())
+            else repository.getUserPosts(f.handle)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val viewedUserReels: StateFlow<List<ReelEntity>> = _selectedFriendDetail
+        .flatMapLatest { f ->
+            if (f == null) kotlinx.coroutines.flow.flowOf(emptyList())
+            else repository.allReels.map { list ->
+                list.filter { it.handle.equals(f.handle, ignoreCase = true) }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun refreshFollowState() {
         viewModelScope.launch {
             repository.refreshFollowState(profile.value.uid)
         }
     }
 
-    /** Follow a user found via search — creates the local friend row first if needed. */
+    /** Follow a user found via search â€” creates the local friend row first if needed. */
     fun followUserFromSearch(user: AppUserEntity) {
         if (user.uid.isBlank() || user.uid == profile.value.uid) return
         viewModelScope.launch {
@@ -1429,6 +1963,7 @@ else {
                 val friend = repository.ensureFriendFromUser(user)
                 if (!friend.isFollowing) {
                     repository.toggleFollow(friend.id, profile.value)
+                    notifyFollowPush(user.uid)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "followUserFromSearch failed", e)
@@ -1436,7 +1971,22 @@ else {
         }
     }
 
-    /** Follow back a user who followed me (from a notification). Makes us Friends 🤝. */
+    /** Toggles follow state for a user found via search (Follow <-> Unfollow). */
+    fun toggleFollowFromSearch(user: AppUserEntity) {
+        if (user.uid.isBlank() || user.uid == profile.value.uid) return
+        viewModelScope.launch {
+            try {
+                val friend = repository.ensureFriendFromUser(user)
+                // toggleFollow handles both directions and updates the follow graph
+                // instantly, so the button label flips smoothly without any list jump.
+                repository.toggleFollow(friend.id, profile.value)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "toggleFollowFromSearch failed", e)
+            }
+        }
+    }
+
+    /** Follow back a user who followed me (from a notification). Makes us Friends ðŸ¤. */
     fun followBackFromNotification(handle: String) {
         if (handle.equals(profile.value.handle, ignoreCase = true)) return
         viewModelScope.launch {
@@ -1444,6 +1994,8 @@ else {
                 val friend = repository.ensureFriendByHandle(handle) ?: return@launch
                 if (!friend.isFollowing) {
                     repository.toggleFollow(friend.id, profile.value)
+                    val targetUid = supabaseService.fetchUidByHandle(handle)
+                    notifyFollowPush(targetUid.orEmpty())
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "followBackFromNotification failed", e)
@@ -1600,7 +2152,8 @@ else {
         supabaseChatJob = viewModelScope.launch {
             try {
                 supabaseService.observeChatRealtime(roomId, profile.value.handle).collect { messages ->
-                    for (message in normalizeIncomingMessages(messages)) {
+                    val normalized = normalizeIncomingMessages(messages)
+                    for (message in normalized) {
                         // Avoid duplicates if already received via sync or send
                         repository.syncChatMessagesFromSupabase(listOf(message))
 
@@ -1629,10 +2182,103 @@ else {
         _userSearchQuery.value = query
     }
 
-    fun openDirectChatWithUser(user: AppUserEntity) {
-        _isInChatThread.value = true
-        _currentTab.value = MainTab.CHAT
-        openDirectThread("dm_${user.handle}")
+    /** Opens the profile sheet for a user found via search (ensures the friend row first). */
+    fun openUserProfileFromSearch(rawUser: AppUserEntity) {
+        val context = getApplication<Application>()
+        var user = rawUser
+        if (user.uid.isBlank() && user.handle.isBlank()) {
+            android.widget.Toast.makeText(context, "This profile can't be opened right now", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (user.uid.isBlank()) {
+            // Remote search rows sometimes come back without a uid; fall back to the
+            // handle as the local id so the profile (and later DMs) still work.
+            user = user.copy(uid = user.handle)
+        } else if (user.uid == profile.value.uid) {
+            return // Self â€” handled by the UI (navigates to PROFILE tab).
+        }
+        viewModelScope.launch {
+            val friend = try {
+                repository.ensureFriendFromUser(user)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "openUserProfileFromSearch failed", e)
+                null
+            }
+            if (friend == null) {
+                android.widget.Toast.makeText(context, "Couldn't open this profile. Check your connection.", android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            _friendOptionsTarget.value = null
+            _showFriendsListFullScreen.value = false
+            _selectedFriendDetail.value = friend
+        }
+    }
+
+    /** Ensures a DM room exists in the room list so the chat thread renders instantly â€”
+     *  even with zero messages â€” instead of falling back to a blank (white) screen. */
+    private fun pinDmRoomFor(handle: String, name: String, avatarType: String) {
+        val myHandle = profile.value.handle.lowercase().trim()
+        if (myHandle.isBlank()) return
+        val roomId = canonicalDmRoom("dm_${handle.lowercase().trim()}")
+        val alreadyListed = _availableRooms.value.any { it.id == roomId } ||
+                _pinnedDmRooms.value.any { it.id == roomId }
+        if (alreadyListed) return
+        val room = LiveChatRoom(
+            id = roomId,
+            title = name.ifBlank { handle },
+            subtitle = "@${handle}",
+            type = "DM",
+            avatarType = avatarType
+        )
+        _pinnedDmRooms.value = _pinnedDmRooms.value + room
+        // Add to the live room list immediately â€” the upstream flow only re-merges
+        // pinned rooms when users/messages change, so the freshly opened thread
+        // would otherwise not find its room and show "Starting chatâ€¦" forever.
+        if (_availableRooms.value.none { it.id == roomId }) {
+            _availableRooms.value = _availableRooms.value + room
+        }
+    }
+
+    /** Opens (or creates) a DM thread with a user found via search, then switches to the CHAT tab. */
+    fun openDirectChatWithUser(rawUser: AppUserEntity) {
+        val context = getApplication<Application>()
+        var user = rawUser
+        if (user.uid.isBlank() && user.handle.isBlank()) {
+            android.widget.Toast.makeText(context, "Can't start this chat right now", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (user.uid.isBlank()) {
+            // Remote search rows sometimes come back without a uid; fall back to the
+            // handle as the local id so the DM thread still gets valid peer info.
+            user = user.copy(uid = user.handle)
+        } else if (user.uid == profile.value.uid) {
+            return // Self-chat â€” nothing to open.
+        }
+        viewModelScope.launch {
+            // The DM room id is canonicalized from OUR handle. If the profile hasn't
+            // finished loading yet, wait briefly so pinning/canonicalization succeed â€”
+            // otherwise the thread would silently open the wrong (or no) room.
+            if (profile.value.handle.isBlank()) {
+                withTimeoutOrNull(3000) {
+                    profile.first { it.handle.isNotBlank() }
+                }
+            }
+            try {
+                // Persist the friend row first so the DM thread has peer info
+                // (name/avatar) to render â€” otherwise the chat opens blank.
+                repository.ensureFriendFromUser(user)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "openDirectChatWithUser ensureFriend failed", e)
+            }
+            _friendOptionsTarget.value = null
+            _selectedFriendDetail.value = null
+            _showFriendsListFullScreen.value = false
+            // Pin the (possibly message-less) DM room BEFORE switching tabs so the
+            // thread screen always finds its room and never shows a blank page.
+            pinDmRoomFor(handle = user.handle, name = user.name, avatarType = user.avatarType)
+            openDirectThread("dm_${user.handle}")
+            _currentTab.value = MainTab.CHAT
+        }
     }
 
     fun toggleOnlineMembersSheet(show: Boolean) {        _showOnlineMembersSheet.value = show
@@ -1704,10 +2350,10 @@ else {
      * every DM is re-keyed to its canonical room so one conversation can never split into
      * multiple inbox entries.
      */
-    private fun normalizeIncomingMessages(messages: List<ChatMessageEntity>): List<ChatMessageEntity> {
+    private suspend fun normalizeIncomingMessages(messages: List<ChatMessageEntity>): List<ChatMessageEntity> = withContext(kotlinx.coroutines.Dispatchers.Default) {
         val myHandle = profile.value.handle.lowercase().trim()
-        if (myHandle.isBlank()) return messages
-        return messages.mapNotNull { msg ->
+        if (myHandle.isBlank()) return@withContext messages
+        messages.mapNotNull { msg ->
             if (!msg.roomId.startsWith("dm_")) return@mapNotNull msg
             
             // 1. Resolve the partner handle from ANY available source
@@ -1754,7 +2400,7 @@ else {
     fun updateMyNote(noteText: String, musicTrack: String?) {
         val updated = _notesList.value.toMutableList()
         val index = updated.indexOfFirst { it.isMe }
-        val newNote = InstagramNote(
+        val newNote = FlareOfficialNote(
             id = "my_note",
             name = profile.value.name,
             handle = profile.value.handle,
@@ -1793,14 +2439,15 @@ else {
             }
             if (receiver.equals(myHandle, ignoreCase = true)) {
                 android.widget.Toast.makeText(
-                    getApplication(), "You can't call yourself 😅", android.widget.Toast.LENGTH_SHORT
+                    getApplication(), "You can't call yourself ðŸ˜…", android.widget.Toast.LENGTH_SHORT
                 ).show()
                 return@launch
             }
             try {
                 val callId = "call_${System.currentTimeMillis()}"
-                val offerSdp = webRtcCallManager.createOutgoingOffer(isVideo, useFrontCamera = true)
-                    ?: throw IllegalStateException("Could not create the call offer")
+                val offer = agoraCallManager.createOutgoingOffer(isVideo, useFrontCamera = true)
+                    ?: throw IllegalStateException("Could not join the call channel")
+                
                 supabaseService.sendCallSignal(
                     CallSignalEntity(
                         id = callId,
@@ -1810,10 +2457,36 @@ else {
                         receiverHandle = receiver,
                         callType = if (isVideo) "VIDEO" else "AUDIO",
                         status = "OFFERING",
-                        sdp = offerSdp,
+                        sdp = offer.sdp,
                         timestamp = System.currentTimeMillis()
                     )
                 )
+
+                // Persist an active (RINGING) call_history row AWAITING SUCCESS
+                val historyRes = supabaseService.startCallHistory(
+                    callId = callId,
+                    channelName = offer.channelName,
+                    callerHandle = myHandle,
+                    receiverHandle = receiver,
+                    callType = if (isVideo) "VIDEO" else "AUDIO"
+                )
+
+                if (historyRes.isSuccess) {
+                    val receiverUid = supabaseService.fetchUidByHandle(receiver)
+                    if (receiverUid.isNullOrBlank()) {
+                        android.util.Log.e("SocialViewModel", "CALLTYPE=PUSH_SKIPPED_NO_RECEIVER_UID callId=$callId receiverHandle=$receiver")
+                    } else {
+                        val pushResult = pushNotificationService.notifyCall(receiverUid, callId, offer.channelName)
+                        if (pushResult.isFailure) {
+                            android.util.Log.e("SocialViewModel", "CALLTYPE=PUSH_NOTIFY_FAILED callId=$callId err=${pushResult.exceptionOrNull()?.message}")
+                        } else {
+                            android.util.Log.i("SocialViewModel", "CALLTYPE=PUSH_NOTIFY_SUCCESS callId=$callId")
+                        }
+                    }
+                } else {
+                    android.util.Log.e("SocialViewModel", "Failed to start call history: ${historyRes.exceptionOrNull()?.message}")
+                }
+
                 _activeCallState.value = CallState(
                     partnerName = partnerName,
                     partnerAvatar = partnerAvatar,
@@ -1824,11 +2497,15 @@ else {
                     isFrontCamera = true,
                     isScreenSharing = false,
                     durationSec = 0,
+                    // The caller is NOT connected yet: the call is ringing out.
+                    // The timer must NOT start until the callee actually joins the
+                    // channel (Agora onUserJoined -> notifyState("Connected")).
                     status = "Calling…",
-                    connectionQuality = if (isVideo) "HD · 1080p 60fps" else "Crystal Clear Audio · 48kHz",
+                    connectionQuality = "Connecting…",
                     callId = callId,
                     remoteHandle = receiver,
-                    isOutgoing = true
+                    isOutgoing = true,
+                    agoraChannel = offer.channelName
                 )
                 monitorOutgoingCall(callId)
             } catch (e: Throwable) {
@@ -1842,27 +2519,27 @@ else {
     fun toggleCallMute() {
         val current = _activeCallState.value ?: return
         val newMuted = !current.isMuted
-        webRtcCallManager.toggleMute(newMuted)
+        agoraCallManager.toggleMute(newMuted)
         _activeCallState.value = current.copy(isMuted = newMuted)
     }
 
     fun toggleCallCamera() {
         val current = _activeCallState.value ?: return
         val newCamera = !current.isCameraOn
-        webRtcCallManager.toggleCamera(newCamera)
+        agoraCallManager.toggleCamera(newCamera)
         _activeCallState.value = current.copy(isCameraOn = newCamera)
     }
 
     fun toggleCallSpeaker() {
         val current = _activeCallState.value ?: return
         val newSpeaker = !current.isSpeakerOn
-        webRtcCallManager.toggleSpeaker(newSpeaker)
+        agoraCallManager.toggleSpeaker(newSpeaker)
         _activeCallState.value = current.copy(isSpeakerOn = newSpeaker)
     }
 
     fun flipCallCamera() {
         val current = _activeCallState.value ?: return
-        webRtcCallManager.switchCamera()
+        agoraCallManager.switchCamera()
         _activeCallState.value = current.copy(isFrontCamera = !current.isFrontCamera)
     }
 
@@ -1874,17 +2551,91 @@ else {
     }
 
     fun endCall() {
+        // WHY is the call ending? A graceful remote quit (reason=0) means the
+        // OTHER side called leaveChannel — this stack-derived call site tells us
+        // exactly which code path triggered it on this device.
+        val site = Throwable().stackTrace
+            .drop(1)
+            .take(3)
+            .joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+        android.util.Log.i("SocialViewModel", "CALLTYPE=END_CALL callId=${_activeCallState.value?.callId} from=$site")
         currentCallPollJob?.cancel()
         currentCallPollJob = null
+        stopCallDurationTicker()
         val current = _activeCallState.value
         current?.callId?.takeIf { it.isNotBlank() }?.let { callId ->
             viewModelScope.launch {
                 runCatching { supabaseService.updateCallSignalStatus(callId, "ENDED") }
             }
         }
-        webRtcCallManager.endCall()
+        agoraCallManager.endCall()
+        recordCallHistory(current, "COMPLETED")
         _activeCallState.value = null
         _incomingCall.value = null
+    }
+
+    /** Live call-duration ticker — starts when the call connects. */
+    private var callDurationJob: kotlinx.coroutines.Job? = null
+
+    private fun startCallDurationTicker() {
+        if (callDurationJob?.isActive == true) return
+        callDurationJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                val current = _activeCallState.value ?: break
+                _activeCallState.value = current.copy(durationSec = current.durationSec + 1)
+            }
+        }
+    }
+
+    private fun stopCallDurationTicker() {
+        callDurationJob?.cancel()
+        callDurationJob = null
+    }
+
+    /** Persists a row to the `call_history` table (never throws into the UI). */
+    private fun recordCallHistory(call: CallState?, finalStatus: String) {
+        val myHandle = profile.value.handle
+        if (call == null || myHandle.isBlank()) return
+        val (caller, receiver) = if (call.isOutgoing) {
+            myHandle to (call.remoteHandle.ifBlank { call.partnerName })
+        } else {
+            (call.remoteHandle.ifBlank { call.partnerName }) to myHandle
+        }
+        viewModelScope.launch {
+            runCatching {
+                if (call.isOutgoing) {
+                    // The caller created a RINGING row at dial time — finalize it
+                    // instead of inserting a duplicate. Fall back to a fresh insert
+                    // when no row matched (e.g. the start insert failed earlier).
+                    val updated = supabaseService.finalizeCallHistory(
+                        channelName = call.agoraChannel,
+                        callerHandle = caller,
+                        status = finalStatus,
+                        durationSec = call.durationSec
+                    )
+                    if (!updated) {
+                        supabaseService.insertCallHistory(
+                            channelName = call.agoraChannel,
+                            callerHandle = caller,
+                            receiverHandle = receiver,
+                            callType = if (call.isVideo) "VIDEO" else "AUDIO",
+                            status = finalStatus,
+                            durationSec = call.durationSec
+                        )
+                    }
+                } else {
+                    supabaseService.insertCallHistory(
+                        channelName = call.agoraChannel,
+                        callerHandle = caller,
+                        receiverHandle = receiver,
+                        callType = if (call.isVideo) "VIDEO" else "AUDIO",
+                        status = finalStatus,
+                        durationSec = call.durationSec
+                    )
+                }
+            }.onFailure { android.util.Log.e("SocialViewModel", "call_history insert failed", it) }
+        }
     }
 
     /** Caller side: poll the call row until the callee accepts (answer SDP) or ends the call. */
@@ -1912,7 +2663,7 @@ else {
                             ringingOut = false
                             val sdp = signal.sdp
                             if (!sdp.isNullOrBlank()) {
-                                webRtcCallManager.applyRemoteAnswer(sdp) { ok ->
+                                agoraCallManager.applyRemoteAnswer(sdp) { ok ->
                                     updateCallStatusIfActive(callId, if (ok) "Connecting…" else "Call error")
                                 }
                             } else {
@@ -1945,17 +2696,42 @@ else {
     }
 
     private fun endCallInternal(callId: String) {
+        val site = Throwable().stackTrace
+            .drop(1)
+            .take(3)
+            .joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+        android.util.Log.i("SocialViewModel", "CALLTYPE=END_CALL_INTERNAL callId=$callId from=$site")
+        stopRingingService()
         currentCallPollJob?.cancel()
-        webRtcCallManager.endCall()
+        agoraCallManager.endCall()
         runCatching { _activeCallState.value = null }
         _incomingCall.value = null
     }
 
-    fun acceptIncomingCall() {
+    fun acceptIncomingCall(
+        explicitCallId: String? = null,
+        explicitAgoraChannel: String? = null,
+        explicitCallType: String? = null,
+        explicitCallerName: String? = null,
+        explicitCallerHandle: String? = null
+    ) {
         viewModelScope.launch {
-            val signal = _incomingCall.value ?: return@launch
+            val signal = _incomingCall.value ?: if (explicitCallId != null && explicitAgoraChannel != null) {
+                // Synthesize a signal if we're launching directly from a notification
+                com.example.data.model.CallSignalEntity(
+                    id = explicitCallId,
+                    callerHandle = explicitCallerHandle ?: "unknown",
+                    callerName = explicitCallerName ?: "Flare Caller",
+                    callerAvatar = "default",
+                    callType = explicitCallType ?: "AUDIO",
+                    sdp = "${com.example.media.AgoraCallManager.PREFIX}$explicitAgoraChannel",
+                    status = "OFFERING",
+                    timestamp = System.currentTimeMillis()
+                )
+            } else null ?: return@launch
+
             // A call can only be accepted while it is still ringing. Stale signals (device was
-            // asleep) would negotiate a WebRTC answer into a dead call — the fake "auto accept".
+            // asleep) would negotiate a WebRTC answer into a dead call â€” the fake "auto accept".
             if (System.currentTimeMillis() - signal.timestamp >
                 com.example.data.remote.SupabaseService.RING_WINDOW_MS
             ) {
@@ -1967,10 +2743,32 @@ else {
                 return@launch
             }
             try {
-                val answerSdp = webRtcCallManager.receiveIncoming(
-                    isVideo = signal.callType == "VIDEO",
-                    remoteOfferSdp = signal.sdp
-                ) ?: throw IllegalStateException("Could not create the call answer")
+                android.util.Log.i("SocialViewModel", "CALLTYPE=RECEIVE_INCOMING_START callId=${signal.id}")
+                // Guard against a hanging Agora token/join: if we cannot join in
+                // 30s, surface that instead of leaving a permanent black screen.
+                val answerSdp = kotlinx.coroutines.withTimeoutOrNull(30_000L) {
+                    try {
+                        agoraCallManager.receiveIncoming(
+                            isVideo = signal.callType == "VIDEO",
+                            remoteOfferSdp = signal.sdp
+                        )
+                    } catch (t: Throwable) {
+                        android.util.Log.e("SocialViewModel", "agora join failed", t)
+                        null
+                    }
+                }
+                if (answerSdp == null) {
+                    android.util.Log.e("SocialViewModel", "CALLTYPE=RECEIVE_INCOMING_TIMEOUT_OR_FAIL callId=${signal.id}")
+                    _incomingCall.value = null
+                    android.widget.Toast.makeText(
+                        getApplication(),
+                        "Could not join the call. Check your internet or Agora setup.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
+                android.util.Log.i("SocialViewModel", "CALLTYPE=RECEIVE_INCOMING_SUCCESS callId=${signal.id}")
+                stopRingingService()
                 supabaseService.updateCallSignalWithAnswer(signal.id, "ACCEPTED", answerSdp)
                 _incomingCall.value = null
                 _activeCallState.value = CallState(
@@ -1987,18 +2785,35 @@ else {
                     connectionQuality = if (signal.callType == "VIDEO") "HD · 1080p 60fps" else "Crystal Clear Audio · 48kHz",
                     callId = signal.id,
                     remoteHandle = signal.callerHandle,
-                    isOutgoing = false
+                    isOutgoing = false,
+                    agoraChannel = signal.sdp.removePrefix(com.example.media.AgoraCallManager.PREFIX)
                 )
             } catch (e: Throwable) {
-                android.util.Log.e("SocialViewModel", "Accept call failed", e)
+                android.util.Log.e("SocialViewModel", "CALLTYPE=RECEIVE_INCOMING_EXCEPTION callId=${signal.id}", e)
                 _incomingCall.value = null
-                android.widget.Toast.makeText(getApplication(), "Could not accept call: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(
+                    getApplication(),
+                    "Could not accept call: ${e.message ?: e.javaClass.simpleName}",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
             }
+        }
+    }
+
+    private fun stopRingingService() {
+        try {
+            val intent = android.content.Intent(getApplication(), CallRingingService::class.java).apply {
+                action = "STOP_SERVICE"
+            }
+            getApplication<Application>().startService(intent)
+        } catch (e: Exception) {
+            // Service might already be stopped
         }
     }
 
     fun rejectIncomingCall() {
         viewModelScope.launch {
+            stopRingingService()
             val signal = _incomingCall.value
             if (signal != null) {
                 runCatching { supabaseService.updateCallSignalStatus(signal.id, "REJECTED") }
@@ -2009,7 +2824,10 @@ else {
 
     fun openChatPartner(name: String) {
         _activeChatPartner.value = name
-        val matchedRoom = _availableRooms.value.find { it.title.contains(name, ignoreCase = true) }
+        // Prefer an EXACT title match so users with similar names ("Rahim", "Rahim2")
+        // never open each other's conversations; only fall back to a contains-match.
+        val matchedRoom = _availableRooms.value.find { it.title.equals(name, ignoreCase = true) }
+            ?: _availableRooms.value.find { it.title.contains(name, ignoreCase = true) }
         if (matchedRoom != null) {
             openDirectThread(matchedRoom.id)
         }
@@ -2022,7 +2840,12 @@ else {
         audioDurationSec: Int = 0
     ) {
         if (text.isBlank() && mediaUrl == null) return
-        val currentRoom = canonicalDmRoom(_activeRoomId.value)
+        val rawRoomId = _activeRoomId.value
+        if (rawRoomId.isBlank()) {
+            android.util.Log.e("SocialViewModel", "Cannot send message: no active room selected")
+            return
+        }
+        val currentRoom = canonicalDmRoom(rawRoomId)
         viewModelScope.launch {
             try {
                 var finalText = text.trim()
@@ -2061,14 +2884,17 @@ else {
                         mimeType = mimeType,
                         uploadType = "media"
                     )
-                    finalMediaUrl = upload.getOrThrow().url
+                    val uploadRes = upload.getOrThrow()
+                    val mediaKey = uploadRes.storagePath
 
                     repository.sendChatMessage(
                         roomId = currentRoom,
                         text = finalText,
                         profile = profile.value,
                         receiverHandle = directPartnerHandle(currentRoom),
-                        mediaUrl = finalMediaUrl,
+                        mediaUrl = mediaKey,
+                        storagePath = mediaKey,
+                        storageProvider = uploadRes.provider,
                         mediaType = mediaType,
                         audioDurationSec = audioDurationSec,
                         originalText = originalText,
@@ -2088,6 +2914,25 @@ else {
                         isTranslated = isTranslated,
                         translationLang = translationLang
                     )
+                }
+                // Fire-and-forget push to the recipient's other devices. The Edge
+                // Function re-verifies the conversation/follow server-side before
+                // delivering; failures here must never affect the chat flow.
+                val partnerHandle = directPartnerHandle(currentRoom)
+                if (partnerHandle.isNotBlank()) {
+                    launch {
+                        runCatching {
+                            val partnerUid = supabaseService.fetchUidByHandle(partnerHandle)
+                            if (!partnerUid.isNullOrBlank()) {
+                                pushNotificationService.notifyChat(
+                                    partnerUid,
+                                    finalText.ifBlank { "Sent you a message" }
+                                )
+                            }
+                        }.onFailure {
+                            android.util.Log.w("SocialViewModel", "Chat push skipped", it)
+                        }
+                    }
                 }
                 rewardRepository.completeTaskByType(profile.value.handle, "CHAT_MESSAGE")
             } catch (e: Exception) {
@@ -2194,7 +3039,7 @@ else {
             try {
                 var finalMediaUrl = imageUriOrRes
 
-                // If a real gallery image is provided, upload it to B2 first and use the returned
+                // If a real gallery image is provided, upload it to R2 first and use the returned
                 // URL. Text-only posts are allowed (finalMediaUrl stays blank), so publishing with
                 // just a caption works from the + button.
                 if (imageUriOrRes.startsWith("content://") || imageUriOrRes.startsWith("file://")) {
@@ -2209,11 +3054,22 @@ else {
                     val mimeType = "image/jpeg"
 
                     val uploadRes = repository.uploadMedia(bytes, fileName, mimeType, "post")
-                    finalMediaUrl = uploadRes.getOrThrow().url
+                    val result = uploadRes.getOrThrow()
+                    // MIGRATION-FRIENDLY: Store only the object key (storagePath) in the primary field
+                    val mediaKey = result.storagePath
 
-                    repository.createPost(profile.value, caption, actionType, finalMediaUrl)
+                    repository.createPost(
+                        profile = profile.value, 
+                        caption = caption, 
+                        actionType = actionType, 
+                        imageRes = mediaKey, 
+                        storagePath = mediaKey,
+                        mimeType = result.mimeType,
+                        fileSize = result.fileSize,
+                        provider = result.provider
+                    )
                 } else {
-                    repository.createPost(profile.value, caption, actionType, finalMediaUrl)
+                    repository.createPost(profile.value, caption, actionType, imageUriOrRes)
                 }
                 rewardRepository.completeTaskByType(profile.value.handle, "CREATE_POST")
                 _showCreatePostSheet.value = false
@@ -2255,24 +3111,34 @@ else {
                 val mimeType = "image/jpeg"
                 
                 val uploadRes = repository.uploadMedia(bytes, fileName, mimeType, "cover")
-                val uploadResult = uploadRes.getOrThrow()
-                val b2Url = uploadResult.url
-                val storagePath = uploadResult.storagePath
+                val result = uploadRes.getOrThrow()
+                val storagePath = result.storagePath
 
-                val oldCover = profile.value.coverType
-                // B2 Delete order: 1. Delete old B2 object first (if it's not default)
-                if (oldCover.isNotBlank() && !oldCover.equals("default", ignoreCase = true) && oldCover != b2Url) {
-                    supabaseService.deleteMediaFromB2(oldCover).getOrThrow()
+                val oldCover = profile.value.coverPath ?: profile.value.coverType
+                // R2 Delete order: 1. Delete old R2 object first (if it's not default)
+                if (oldCover.isNotBlank() && !oldCover.equals("default", ignoreCase = true) && oldCover != storagePath) {
+                    supabaseService.deleteMediaFromR2(oldCover).getOrThrow()
                 }
 
-                // 2. Only if B2 delete succeeds (or is skipped), update the database reference
-                repository.updateProfile(profile.value.copy(coverType = b2Url, coverPath = storagePath))
+                // 2. MIGRATION-FRIENDLY: Store only the key in the database
+                repository.updateProfile(
+                    profile.value.copy(
+                        coverType = storagePath, 
+                        coverPath = storagePath,
+                        coverProvider = result.provider,
+                        coverMime = result.mimeType,
+                        coverSize = result.fileSize
+                    )
+                )
                 repository.createPost(
                     profile = profile.value,
                     caption = "Updated cover photo ✨",
                     actionType = "cover",
-                    imageRes = b2Url,
-                    storagePath = storagePath
+                    imageRes = storagePath,
+                    storagePath = storagePath,
+                    mimeType = result.mimeType,
+                    fileSize = result.fileSize,
+                    provider = result.provider
                 )
                 _showCreatePostSheet.value = false
             } catch (e: Exception) {
@@ -2299,24 +3165,34 @@ else {
                 val mimeType = "image/jpeg"
                 
                 val uploadRes = repository.uploadMedia(bytes, fileName, mimeType, "profile")
-                val uploadResult = uploadRes.getOrThrow()
-                val b2Url = uploadResult.url
-                val storagePath = uploadResult.storagePath
+                val result = uploadRes.getOrThrow()
+                val storagePath = result.storagePath
 
-                val oldAvatar = profile.value.avatarType
-                // B2 Delete order: 1. Delete old B2 object first
-                if (oldAvatar.isNotBlank() && !oldAvatar.equals("default", ignoreCase = true) && oldAvatar != b2Url) {
-                    supabaseService.deleteMediaFromB2(oldAvatar).getOrThrow()
+                val oldAvatar = profile.value.avatarPath ?: profile.value.avatarType
+                // R2 Delete order: 1. Delete old R2 object first
+                if (oldAvatar.isNotBlank() && !oldAvatar.equals("default", ignoreCase = true) && oldAvatar != storagePath) {
+                    supabaseService.deleteMediaFromR2(oldAvatar).getOrThrow()
                 }
 
-                // 2. Update database reference only on success
-                repository.updateProfile(profile.value.copy(avatarType = b2Url, avatarPath = storagePath))
+                // 2. MIGRATION-FRIENDLY: Store only the key in the database
+                repository.updateProfile(
+                    profile.value.copy(
+                        avatarType = storagePath, 
+                        avatarPath = storagePath,
+                        avatarProvider = result.provider,
+                        avatarMime = result.mimeType,
+                        avatarSize = result.fileSize
+                    )
+                )
                 repository.createPost(
                     profile = profile.value,
-                    caption = "Updated profile picture 📸",
+                    caption = "Updated profile picture ðŸ“¸",
                     actionType = "profile",
-                    imageRes = b2Url,
-                    storagePath = storagePath
+                    imageRes = storagePath,
+                    storagePath = storagePath,
+                    mimeType = result.mimeType,
+                    fileSize = result.fileSize,
+                    provider = result.provider
                 )
                 _showCreatePostSheet.value = false
             } catch (e: Exception) {
@@ -2339,7 +3215,16 @@ else {
                 val mimeType = "image/jpeg"
                 val upload = repository.uploadMedia(bytes, "story_${System.currentTimeMillis()}.jpg", mimeType, "story")
                 val res = upload.getOrThrow()
-                repository.addStory(res.url, null, caption, profile.value)
+                val mediaKey = res.storagePath
+                repository.addStory(
+                    imageRes = mediaKey, 
+                    storagePath = mediaKey, 
+                    caption = caption, 
+                    profile = profile.value,
+                    mimeType = res.mimeType,
+                    fileSize = res.fileSize,
+                    provider = res.provider
+                )
                 _showCreatePostSheet.value = false
             } catch (e: Exception) {
                 android.util.Log.e("SocialViewModel", "Story Upload Error", e)
@@ -2428,7 +3313,7 @@ else {
         rewardRepository.recordReelUpload(profile.value.handle)
     }
 
-    fun uploadReel(caption: String, music: String, videoUriString: String) {
+    fun uploadReel(caption: String, music: String, videoUriString: String, customThumbnailUri: String = "") {
         viewModelScope.launch {
             try {
                 requireUploadSession()
@@ -2439,26 +3324,51 @@ else {
                 
                 val uri = android.net.Uri.parse(videoUriString)
                 
-                // 1. Generate and COMPRESS thumbnail from video
-                var thumbnailB2Url = ""
+                // 1. Designate the THUMBNAIL (cover image shown in feeds).
+                //    Priority: a user-picked custom image > a frame auto-extracted
+                //    from the video. We persist only the object key (thumbnailPath) â€”
+                //    never a raw URL.
                 var thumbnailPath: String? = null
-                try {
-                    val mmr = android.media.MediaMetadataRetriever()
-                    mmr.setDataSource(getApplication(), uri)
-                    val bitmap = mmr.getFrameAtTime(1000000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    mmr.release()
-                    
-                    bitmap?.let {
-                        val out = java.io.ByteArrayOutputStream()
-                        it.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
-                        val thumbRes = repository.uploadMedia(out.toByteArray(), "thumb_${System.currentTimeMillis()}.jpg", "image/jpeg", "media")
-                        val res = thumbRes.getOrThrow()
-                        thumbnailB2Url = res.url
-                        thumbnailPath = res.storagePath
-                        it.recycle()
+
+                // 1a. Custom thumbnail: an image the user chose in the composer.
+                val hasCustomThumb = customThumbnailUri.isNotBlank() &&
+                    (customThumbnailUri.startsWith("content://") || customThumbnailUri.startsWith("file://")) &&
+                    customThumbnailUri != videoUriString
+                if (hasCustomThumb) {
+                    try {
+                        val tUri = android.net.Uri.parse(customThumbnailUri)
+                        val tBytes = com.example.util.MediaUtils.compressImage(getApplication(), tUri)
+                            ?: throw Exception("Could not compress custom thumbnail")
+                        val tRes = repository.uploadMedia(tBytes, "thumb_${System.currentTimeMillis()}.jpg", "image/jpeg", "media")
+                        thumbnailPath = tRes.getOrThrow().storagePath
+                    } catch (e: Exception) {
+                        android.util.Log.e("SocialViewModel", "Custom thumbnail upload failed", e)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("SocialViewModel", "Thumbnail generation failed", e)
+                }
+
+                // 1b. Fall back to auto-extracting a frame from the video.
+                if (thumbnailPath == null) {
+                    try {
+                        val mmr = android.media.MediaMetadataRetriever()
+                        mmr.setDataSource(getApplication(), uri)
+                        // Prefer a frame 1s in; fall back to the very first frame for
+                        // very short clips where 1s is past the end (returns null).
+                        val bitmap = mmr.getFrameAtTime(1000000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            ?: mmr.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            ?: mmr.frameAtTime
+                        mmr.release()
+
+                        bitmap?.let {
+                            val out = java.io.ByteArrayOutputStream()
+                            it.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+                            val thumbRes = repository.uploadMedia(out.toByteArray(), "thumb_${System.currentTimeMillis()}.jpg", "image/jpeg", "media")
+                            val res = thumbRes.getOrThrow()
+                            thumbnailPath = res.storagePath
+                            it.recycle()
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SocialViewModel", "Thumbnail generation failed", e)
+                    }
                 }
 
                 _reelUploadProgress.value = 10
@@ -2479,9 +3389,8 @@ else {
                         _reelUploadProgress.value = 10 + (pct * 80) / 100
                     }
                 )
-                val uploadResult = uploadRes.getOrThrow()
-                val finalVideoUrl = uploadResult.url
-                val videoStoragePath = uploadResult.storagePath
+                val result = uploadRes.getOrThrow()
+                val videoKey = result.storagePath
 
                 _reelUploadProgress.value = 92
 
@@ -2489,10 +3398,13 @@ else {
                     profile = profile.value,
                     caption = caption,
                     music = music,
-                    imageRes = thumbnailB2Url,
-                    videoUrl = finalVideoUrl,
-                    storagePath = videoStoragePath,
-                    thumbnailPath = thumbnailPath
+                    imageRes = thumbnailPath ?: "",
+                    videoUrl = videoKey,
+                    storagePath = videoKey,
+                    thumbnailPath = thumbnailPath,
+                    mimeType = result.mimeType,
+                    fileSize = result.fileSize,
+                    provider = result.provider
                 )
                 
                 _reelUploadProgress.value = 95
@@ -2587,6 +3499,156 @@ else {
         }
     }
 
+    // ==================================================================
+    // PROFESSIONAL WALLET (user wallet hub)
+    // ==================================================================
+    fun openWalletScreen() {
+        _showWalletScreen.value = true
+        viewModelScope.launch {
+            val handle = profile.value.handle
+            rewardRepository.refreshWalletSummary(handle)
+            rewardRepository.refreshWalletTransactions(handle)
+        }
+    }
+
+    fun closeWalletScreen() {
+        _showWalletScreen.value = false
+    }
+
+    fun refreshWalletData() {
+        viewModelScope.launch {
+            val handle = profile.value.handle
+            try {
+                rewardRepository.refreshWalletSummary(handle)
+                rewardRepository.refreshWalletTransactions(handle)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Wallet refresh failed", e)
+            }
+        }
+    }
+
+    fun redeemRewardCredits(source: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val handle = profile.value.handle
+            val result = rewardRepository.redeemCredits(handle, source)
+            result.fold(
+                onSuccess = { onResult(true, it) },
+                onFailure = { onResult(false, it.message ?: "Redemption failed") }
+            )
+        }
+    }
+
+    /** Activates the Verification Badge by paying the Super-Admin fee from My Wallet. */
+    fun purchaseVerificationBadge(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val handle = profile.value.handle
+            val result = rewardRepository.purchaseVerificationBadge(handle)
+            result.fold(
+                onSuccess = { o ->
+                    rewardRepository.setVerificationBadge(o.optBoolean("verification_badge", true))
+                    try { refreshWalletData() } catch (_: Exception) {}
+                    val spent = o.optInt("credits_spent", 0)
+                    onResult(true, "Verification badge activated! $spent coins deducted from your wallet.")
+                },
+                onFailure = { e ->
+                    val raw = e.message ?: "Purchase failed"
+                    val msg = try {
+                        org.json.JSONObject(raw).optString("message", raw)
+                    } catch (_: Exception) { raw }
+                    onResult(false, msg)
+                }
+            )
+        }
+    }
+
+    fun requestWalletWithdrawal(method: String, account: String, credits: Int, usd: Double, bdt: Double, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val handle = profile.value.handle
+            val email = userAuthState.value.email
+            val result = rewardRepository.requestWithdrawalV2(handle, email, method, account, credits, usd, bdt)
+            result.fold(
+                onSuccess = { onResult(true, "Withdrawal request #$it submitted") },
+                onFailure = { onResult(false, it.message ?: "Withdrawal request failed") }
+            )
+        }
+    }
+
+    // ==================================================================
+    // ADMIN WALLET PANEL
+    // ==================================================================
+    fun refreshAdminWalletData() {
+        viewModelScope.launch {
+            try {
+                rewardRepository.refreshPlatformOverview()
+                rewardRepository.refreshUserEarnings()
+                rewardRepository.refreshAuditLogs()
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Admin wallet refresh failed", e)
+            }
+        }
+    }
+
+    fun refreshAdminWalletTransactions() {
+        viewModelScope.launch {
+            try {
+                rewardRepository.refreshWalletTransactions(null)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Admin transactions refresh failed", e)
+            }
+        }
+    }
+
+    fun refreshAdminFraudFlags(includeResolved: Boolean = false) {
+        viewModelScope.launch {
+            try {
+                rewardRepository.refreshFraudFlags(includeResolved)
+            } catch (e: Exception) {
+                android.util.Log.e("SocialViewModel", "Admin fraud flags refresh failed", e)
+            }
+        }
+    }
+
+    fun adminAdjustWallet(target: String, amount: Int, reason: String, type: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = rewardRepository.adminAdjustWallet(target, amount, reason, type)
+            result.fold(
+                onSuccess = { onResult(true, it); refreshAdminWalletData() },
+                onFailure = { onResult(false, it.message ?: "Adjustment failed") }
+            )
+        }
+    }
+
+    fun adminRejectWithdrawal(wdId: String, reason: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = rewardRepository.adminRejectWithdrawalV2(wdId, reason)
+            result.fold(
+                onSuccess = { onResult(true, it); refreshAdminWalletData() },
+                onFailure = { onResult(false, it.message ?: "Rejection failed") }
+            )
+        }
+    }
+
+    fun runFraudDetection(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val flags = rewardRepository.runFraudDetection()
+                onResult(true, "Scan complete: ${flags.size} unresolved flag(s)")
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Fraud detection failed")
+            }
+        }
+    }
+
+    fun resolveFraudFlag(flagId: String, reason: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = rewardRepository.adminResolveFraudFlag(flagId, reason)
+            result.fold(
+                onSuccess = { onResult(true, it) },
+                onFailure = { onResult(false, it.message ?: "Could not resolve flag") }
+            )
+        }
+    }
+
     fun addAdminTask(title: String, desc: String, reward: Int) {
         rewardRepository.addAdminCustomTask(title, desc, reward)
     }
@@ -2644,14 +3706,14 @@ else {
         viewModelScope.launch {
             try {
                 val oldCover = profile.value.coverType
-                // 1. Delete B2 object first
+                // 1. Delete R2 object first
                 if (oldCover.isNotBlank() && !oldCover.equals("default", ignoreCase = true)) {
-                    supabaseService.deleteMediaFromB2(oldCover).getOrThrow()
+                    supabaseService.deleteMediaFromR2(oldCover).getOrThrow()
                 }
-                // 2. Update DB reference only if B2 delete succeeds
+                // 2. Update DB reference only if R2 delete succeeds
                 repository.updateProfile(profile.value.copy(coverType = "default"))
             } catch (e: Exception) {
-                android.util.Log.e("SocialViewModel", "Reset Cover B2 Delete Error", e)
+                android.util.Log.e("SocialViewModel", "Reset Cover R2 Delete Error", e)
                 android.widget.Toast.makeText(getApplication(), "Could not delete from storage: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }
@@ -2662,14 +3724,14 @@ else {
         viewModelScope.launch {
             try {
                 val oldAvatar = profile.value.avatarType
-                // 1. Delete B2 object first
+                // 1. Delete R2 object first
                 if (oldAvatar.isNotBlank() && !oldAvatar.equals("default", ignoreCase = true)) {
-                    supabaseService.deleteMediaFromB2(oldAvatar).getOrThrow()
+                    supabaseService.deleteMediaFromR2(oldAvatar).getOrThrow()
                 }
-                // 2. Update DB reference only if B2 delete succeeds
+                // 2. Update DB reference only if R2 delete succeeds
                 repository.updateProfile(profile.value.copy(avatarType = "default"))
             } catch (e: Exception) {
-                android.util.Log.e("SocialViewModel", "Reset Profile B2 Delete Error", e)
+                android.util.Log.e("SocialViewModel", "Reset Profile R2 Delete Error", e)
                 android.widget.Toast.makeText(getApplication(), "Could not delete from storage: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             }
         }

@@ -1,4 +1,4 @@
-package com.example.ui.components
+﻿package com.example.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -89,7 +89,7 @@ fun PostBoostDialog(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .background(
-                                        Brush.linearGradient(listOf(InstagramPink, InstagramPurple)),
+                                        Brush.linearGradient(listOf(FlareOfficialPink, FlareOfficialPurple)),
                                         CircleShape
                                     ),
                                 contentAlignment = Alignment.Center
@@ -135,7 +135,7 @@ fun PostBoostDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    VynImage(
+                                    FlareImage(
                                         imageResName = post.postImageRes,
                                         modifier = Modifier
                                             .size(54.dp)
@@ -158,13 +158,13 @@ fun PostBoostDialog(
                                     }
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = InstagramPink.copy(alpha = 0.15f)
+                                        color = FlareOfficialPink.copy(alpha = 0.15f)
                                     ) {
                                         Text(
                                             text = "SPONSORED",
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = InstagramPink,
+                                            color = FlareOfficialPink,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                                         )
                                     }
@@ -184,8 +184,8 @@ fun PostBoostDialog(
                                 val isSelected = selectedGoal == goalTitle
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) InstagramPurple.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                                    border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, InstagramPurple) else null,
+                                    color = if (isSelected) FlareOfficialPurple.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                    border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, FlareOfficialPurple) else null,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 3.dp)
@@ -199,7 +199,7 @@ fun PostBoostDialog(
                                         RadioButton(
                                             selected = isSelected,
                                             onClick = { selectedGoal = goalTitle },
-                                            colors = RadioButtonDefaults.colors(selectedColor = InstagramPurple)
+                                            colors = RadioButtonDefaults.colors(selectedColor = FlareOfficialPurple)
                                         )
                                         Column {
                                             Text(goalTitle, fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -254,7 +254,7 @@ fun PostBoostDialog(
                                     val isSelected = durationDays == days
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
-                                        color = if (isSelected) InstagramPink else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                        color = if (isSelected) FlareOfficialPink else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                                         modifier = Modifier
                                             .weight(1f)
                                             .clickable { durationDays = days }
@@ -347,7 +347,7 @@ fun PostBoostDialog(
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         RadioButton(selected = payMethod == "WALLET", onClick = { payMethod = "WALLET" })
                                         Column {
-                                            Text("Vyn9 Wallet Balance", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            Text("FlareOfficial Wallet Balance", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                             Text("Available: $${String.format(Locale.US, "%.2f", walletBalanceUsd)} (≈৳${walletBalanceBdt.toInt()})", fontSize = 10.sp, color = Color(0xFF00B894))
                                         }
                                     }
@@ -362,8 +362,8 @@ fun PostBoostDialog(
                             // Option 2: Instant Gateway (bKash / Nagad / Cards)
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (payMethod == "GATEWAY") InstagramPink.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                                border = if (payMethod == "GATEWAY") androidx.compose.foundation.BorderStroke(1.5.dp, InstagramPink) else null,
+                                color = if (payMethod == "GATEWAY") FlareOfficialPink.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                border = if (payMethod == "GATEWAY") androidx.compose.foundation.BorderStroke(1.5.dp, FlareOfficialPink) else null,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { payMethod = "GATEWAY" }

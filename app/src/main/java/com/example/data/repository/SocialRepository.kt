@@ -14,9 +14,13 @@ import kotlinx.coroutines.launch
 
 class SocialRepository(
     private val dao: SocialDao,
-    private val supabaseService: SupabaseService
+    private val supabaseService: SupabaseService,
+    private val appContext: android.content.Context
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
+    private val pushService by lazy {
+        com.example.data.remote.PushNotificationService(appContext)
+    }
 
 
 
@@ -61,6 +65,31 @@ class SocialRepository(
         }
     }
 
+    // ---- Realtime presence ----------------------------------------------------
+
+    /** Heartbeat so other users see ME as online. */
+    suspend fun touchMyPresence() = supabaseService.touchSocialPresence()
+
+    /** handle(lowercased) -> last_seen epoch millis. */
+    suspend fun fetchPresence(handles: List<String>): Map<String, Long> =
+        supabaseService.fetchPresence(handles)
+
+    /** Persists online flags onto cached friend rows so all UI observes them reactively. */
+    suspend fun applyPresence(lastSeenByHandle: Map<String, Long>) {
+        if (lastSeenByHandle.isEmpty()) return
+        val now = System.currentTimeMillis()
+        try {
+            friends.first().forEach { f ->
+                val online = com.example.util.Presence.isOnline(lastSeenByHandle[f.handle.lowercase().trim()], now)
+                if (online != f.isOnline) {
+                    dao.updateFriendOnline(f.handle, online)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SocialRepository", "applyPresence failed", e)
+        }
+    }
+
     /** Returns the local friend row for a searched/known user, creating it on first contact. */
     suspend fun ensureFriendFromUser(user: AppUserEntity): FriendEntity {
         dao.getFriendById(user.uid)?.let { return it }
@@ -73,12 +102,15 @@ class SocialRepository(
             coverImageRes = user.coverType,
             avatarPath = user.avatarPath,
             coverPath = user.coverPath,
+            avatarProvider = user.avatarProvider,
+            coverProvider = user.coverProvider,
             bio = user.bio,
             location = user.location,
             isFollowing = graph.following.contains(user.uid),
             isFollower = graph.followers.contains(user.uid),
             isFriend = graph.following.contains(user.uid) && graph.followers.contains(user.uid),
-            isOnline = false
+            isOnline = false,
+            timestamp = System.currentTimeMillis()
         )
         dao.insertFriend(friend)
         return friend
@@ -97,10 +129,21 @@ class SocialRepository(
         // No local seed data. All content is loaded from Supabase (the source of truth).
     }
 
-    suspend fun cleanAllUsers() {
-        dao.deleteAllUsers()
-        // Deletion is a privileged operation; this call will throw if RLS/backend rejects it.
-        supabaseService.deleteAllUsers()
+    /**
+     * SUPER_ADMIN only. Deletes every account EXCEPT the account whose @handle
+     * is [ceoHandle]. Permanently removes the real auth accounts (not just the
+     * local cache), then re-syncs the local user list so the UI reflects the
+     * remote truth.
+     */
+    suspend fun deleteAllUsersExcept(ceoHandle: String): Int {
+        val deleted = supabaseService.deleteAllUsersExcept(ceoHandle).getOrThrow()
+        // Wait briefly for Supabase background purging to complete before re-fetching
+        kotlinx.coroutines.delay(1500)
+        // Refresh the local cache from the server so the deleted accounts vanish.
+        runCatching { supabaseService.fetchAllUsers() }
+            .getOrElse { emptyList() }
+            .let { if (it.isNotEmpty()) syncUsersFromSupabase(it) }
+        return deleted
     }
 
     suspend fun registerOrSyncUser(
@@ -108,6 +151,15 @@ class SocialRepository(
         name: String,
         email: String
     ): AppUserEntity {
+        // 1. Try to fetch the latest profile from the server FIRST.
+        // This ensures we get any staff roles/permissions assigned by admins.
+        val remoteUser = supabaseService.fetchUserByUid(uid).getOrNull()
+        if (remoteUser != null) {
+            dao.insertUser(remoteUser)
+            updateProfileCache(remoteUser)
+            return remoteUser
+        }
+
         val existing = dao.getUserByUid(uid)
 
         if (existing != null) {
@@ -121,25 +173,12 @@ class SocialRepository(
             // shows no name/handle/cover and posts resolve against a blank handle.
             val cached = userProfile.first()
             if (cached == null || cached.uid != existing.uid) {
-                dao.insertOrUpdateProfile(
-                    UserProfileEntity(
-                        id = 1,
-                        uid = existing.uid,
-                        name = existing.name,
-                        handle = existing.handle,
-                        bio = existing.bio,
-                        location = existing.location,
-                        avatarType = existing.avatarType,
-                        coverType = existing.coverType,
-                        avatarPath = existing.avatarPath,
-                        coverPath = existing.coverPath,
-                        isPublic = existing.isPublic
-                    )
-                )
+                updateProfileCache(existing)
             }
             return existing
         }
 
+        // 2. If no server profile exists, create a new one.
         val newUser = AppUserEntity(
             uid = uid,
             name = name.ifBlank { email.substringBefore("@") },
@@ -161,7 +200,9 @@ class SocialRepository(
             canManageRewards = false,
             canCleanStorage = false,
             isPublic = true,
-            registeredAt = System.currentTimeMillis()
+            registeredAt = System.currentTimeMillis(),
+            avatarProvider = "cloudflare_r2",
+            coverProvider = "cloudflare_r2"
         )
 
         // Server persists the profile first; the local row is only cached once the server confirms.
@@ -169,25 +210,32 @@ class SocialRepository(
         dao.insertUser(newUser)
 
         // Initialize or update user profile entity (display cache only).
+        updateProfileCache(newUser)
+        return newUser
+    }
+
+    private suspend fun updateProfileCache(user: AppUserEntity) {
         dao.insertOrUpdateProfile(
             UserProfileEntity(
                 id = 1,
-                uid = newUser.uid,
-                name = newUser.name,
-                handle = newUser.handle,
-                bio = newUser.bio,
-                location = newUser.location,
-                postsCount = 0,
-                friendsCount = 0,
-                followersCount = 0,
-                followingCount = 0,
-                avatarType = newUser.avatarType,
-                coverType = newUser.coverType,
-                isPublic = newUser.isPublic
+                uid = user.uid,
+                name = user.name,
+                handle = user.handle,
+                bio = user.bio,
+                location = user.location,
+                avatarType = user.avatarType,
+                coverType = user.coverType,
+                avatarPath = user.avatarPath,
+                coverPath = user.coverPath,
+                isPublic = user.isPublic,
+                avatarProvider = user.avatarProvider,
+                coverProvider = user.coverProvider,
+                avatarMime = user.avatarMime,
+                coverMime = user.coverMime,
+                avatarSize = user.avatarSize,
+                coverSize = user.coverSize
             )
         )
-
-        return newUser
     }
 
     suspend fun getUserByUid(uid: String): AppUserEntity? {
@@ -204,7 +252,21 @@ class SocialRepository(
         canManageChats: Boolean? = null,
         canManageMonetization: Boolean? = null,
         canManageRewards: Boolean? = null,
-        canCleanStorage: Boolean? = null
+        canManageRewardRules: Boolean? = null,
+        canManageRewardRates: Boolean? = null,
+        canManageRewardGateways: Boolean? = null,
+        canProcessPayouts: Boolean? = null,
+        canCleanStorage: Boolean? = null,
+        canViewReports: Boolean? = null,
+        canReviewReports: Boolean? = null,
+        canGiveWarning: Boolean? = null,
+        canDeleteReel: Boolean? = null,
+        canDeleteVideo: Boolean? = null,
+        canSuspendUser: Boolean? = null,
+        canBanUser: Boolean? = null,
+        canRemoveWarning: Boolean? = null,
+        canViewWarningHistory: Boolean? = null,
+        canViewActivityLog: Boolean? = null
     ) {
         val existing = dao.getUserByUid(uid) ?: return
         
@@ -219,7 +281,21 @@ class SocialRepository(
             canManageChats = canManageChats ?: existing.canManageChats,
             canManageMonetization = canManageMonetization ?: existing.canManageMonetization,
             canManageRewards = canManageRewards ?: existing.canManageRewards,
-            canCleanStorage = canCleanStorage ?: existing.canCleanStorage
+            canManageRewardRules = canManageRewardRules ?: existing.canManageRewardRules,
+            canManageRewardRates = canManageRewardRates ?: existing.canManageRewardRates,
+            canManageRewardGateways = canManageRewardGateways ?: existing.canManageRewardGateways,
+            canProcessPayouts = canProcessPayouts ?: existing.canProcessPayouts,
+            canCleanStorage = canCleanStorage ?: existing.canCleanStorage,
+            canViewReports = canViewReports ?: existing.canViewReports,
+            canReviewReports = canReviewReports ?: existing.canReviewReports,
+            canGiveWarning = canGiveWarning ?: existing.canGiveWarning,
+            canDeleteReel = canDeleteReel ?: existing.canDeleteReel,
+            canDeleteVideo = canDeleteVideo ?: existing.canDeleteVideo,
+            canSuspendUser = canSuspendUser ?: existing.canSuspendUser,
+            canBanUser = canBanUser ?: existing.canBanUser,
+            canRemoveWarning = canRemoveWarning ?: existing.canRemoveWarning,
+            canViewWarningHistory = canViewWarningHistory ?: existing.canViewWarningHistory,
+            canViewActivityLog = canViewActivityLog ?: existing.canViewActivityLog
         )
 
         // 2. If server update succeeds, update local cache
@@ -234,7 +310,21 @@ class SocialRepository(
                 canManageChats = canManageChats ?: existing.canManageChats,
                 canManageMonetization = canManageMonetization ?: existing.canManageMonetization,
                 canManageRewards = canManageRewards ?: existing.canManageRewards,
-                canCleanStorage = canCleanStorage ?: existing.canCleanStorage
+                canManageRewardRules = canManageRewardRules ?: existing.canManageRewardRules,
+                canManageRewardRates = canManageRewardRates ?: existing.canManageRewardRates,
+                canManageRewardGateways = canManageRewardGateways ?: existing.canManageRewardGateways,
+                canProcessPayouts = canProcessPayouts ?: existing.canProcessPayouts,
+                canCleanStorage = canCleanStorage ?: existing.canCleanStorage,
+                canViewReports = canViewReports ?: existing.canViewReports,
+                canReviewReports = canReviewReports ?: existing.canReviewReports,
+                canGiveWarning = canGiveWarning ?: existing.canGiveWarning,
+                canDeleteReel = canDeleteReel ?: existing.canDeleteReel,
+                canDeleteVideo = canDeleteVideo ?: existing.canDeleteVideo,
+                canSuspendUser = canSuspendUser ?: existing.canSuspendUser,
+                canBanUser = canBanUser ?: existing.canBanUser,
+                canRemoveWarning = canRemoveWarning ?: existing.canRemoveWarning,
+                canViewWarningHistory = canViewWarningHistory ?: existing.canViewWarningHistory,
+                canViewActivityLog = canViewActivityLog ?: existing.canViewActivityLog
             )
             android.util.Log.d("SocialRepository", "Role/Perms updated successfully for uid=$uid")
         } else {
@@ -260,13 +350,14 @@ class SocialRepository(
     }
 
     suspend fun deleteUserAccount(uid: String) {
+        // Delete the remote account FIRST so a server failure surfaces instead of being hidden,
+        // and only clear the local row after the remote deletion actually succeeded.
+        supabaseService.deleteUser(uid).getOrThrow()
         dao.deleteUserByUid(uid)
-        // Await the server result so a failed remote deletion surfaces instead of being hidden.
-        supabaseService.deleteUser(uid)
     }
 
     // --- SYSTEM STORAGE CLEANUP (SUPER ADMIN POWER) ---
-    suspend fun addReelComment(reelId: Long, text: String, profile: UserProfileEntity) {
+    suspend fun addReelComment(reelId: Long, text: String, profile: UserProfileEntity, reelOwnerHandle: String = "") {
         val comment = CommentEntity(
             postId = reelId,
             username = profile.handle,
@@ -277,6 +368,19 @@ class SocialRepository(
         )
         val created = supabaseService.addComment(comment, reelId.toString(), profile.uid).getOrThrow()
         dao.insertComment(created.copy(postId = reelId))
+
+        if (reelOwnerHandle.isNotBlank() && reelOwnerHandle != profile.handle) {
+            val notif = NotificationEntity(
+                username = profile.handle,
+                recipientHandle = reelOwnerHandle,
+                avatarType = profile.avatarType,
+                actionText = "commented on your reel: $text",
+                timeAgo = "Just now",
+                isRead = false,
+                timestamp = System.currentTimeMillis()
+            )
+            runCatching { supabaseService.sendNotification(notif) }
+        }
     }
 
     suspend fun cleanAllPosts() {
@@ -317,9 +421,13 @@ class SocialRepository(
         if (currentUid.isBlank()) throw Exception("Authentication required to like")
         val newLiked = !post.isLiked
         val remotePostId = post.remoteId.toLongOrNull() ?: throw Exception("Post has no remote ID")
-        
-        // 1. Update Supabase first (Authoritative multi-user like)
-        supabaseService.togglePostLike(remotePostId, currentUid, newLiked).getOrThrow()
+
+        // 1. Update Supabase first
+        if (post.isReelPost) {
+            supabaseService.toggleReelLike(remotePostId, currentUid, newLiked).getOrThrow()
+        } else {
+            supabaseService.togglePostLike(remotePostId, currentUid, newLiked).getOrThrow()
+        }
         
         // 2. Local Room update reflects confirmed state
         val updated = post.copy(
@@ -335,7 +443,11 @@ class SocialRepository(
         val remotePostId = post.remoteId.toLongOrNull() ?: throw Exception("Post has no remote ID")
         
         // 1. Update Supabase first
-        supabaseService.togglePostSave(remotePostId, currentUid, newSaved).getOrThrow()
+        if (post.isReelPost) {
+            supabaseService.toggleReelSave(remotePostId, currentUid, newSaved).getOrThrow()
+        } else {
+            supabaseService.togglePostSave(remotePostId, currentUid, newSaved).getOrThrow()
+        }
         
         // 2. Local Room update
         dao.updatePost(post.copy(isSaved = newSaved))
@@ -347,14 +459,18 @@ class SocialRepository(
         val remotePostId = post.remoteId.toLongOrNull() ?: throw Exception("Post has no remote ID")
         
         // 1. Update Supabase first
-        supabaseService.togglePostRepost(remotePostId, currentUid, newRepost).getOrThrow()
+        if (post.isReelPost) {
+            supabaseService.toggleReelRepost(remotePostId, currentUid, newRepost).getOrThrow()
+        } else {
+            supabaseService.togglePostRepost(remotePostId, currentUid, newRepost).getOrThrow()
+        }
         
         // 2. Local Room update
         val newCount = if (newRepost) post.repostsCount + 1 else (post.repostsCount - 1).coerceAtLeast(0)
         dao.updatePost(post.copy(isReposted = newRepost, repostsCount = newCount))
     }
 
-    suspend fun addComment(postId: Long, text: String, profile: UserProfileEntity) {
+    suspend fun addComment(postId: Long, text: String, profile: UserProfileEntity, ownerHandle: String = "") {
         val post = dao.getPostById(postId) ?: return
         val remoteKey = post.remoteId.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Post has no remote ID")
@@ -370,6 +486,19 @@ class SocialRepository(
         // Server-side triggers now handle comment count increments automatically and accurately.
         val created = supabaseService.addComment(comment, remoteKey, profile.uid).getOrThrow()
         dao.insertComment(created.copy(postId = postId))
+
+        if (ownerHandle.isNotBlank() && ownerHandle != profile.handle) {
+            val notif = NotificationEntity(
+                username = profile.handle,
+                recipientHandle = ownerHandle,
+                avatarType = profile.avatarType,
+                actionText = "commented on your post: $text",
+                timeAgo = "Just now",
+                isRead = false,
+                timestamp = System.currentTimeMillis()
+            )
+            runCatching { supabaseService.sendNotification(notif) }
+        }
     }
 
     suspend fun createPost(
@@ -377,7 +506,10 @@ class SocialRepository(
         caption: String,
         actionType: String,
         imageRes: String,
-        storagePath: String? = null
+        storagePath: String? = null,
+        mimeType: String? = null,
+        fileSize: Long = 0,
+        provider: String = "cloudflare_r2"
     ) {
         val actionText = when (actionType) {
             "cover" -> "${profile.handle} updated their cover photo"
@@ -387,11 +519,11 @@ class SocialRepository(
         val post = PostEntity(
             username = profile.name,
             userHandle = profile.handle,
-            userAvatarType = profile.avatarType,
-            userAvatarPath = profile.avatarPath,
+            userAvatarType = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarType),
+            userAvatarPath = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarPath),
             actionText = actionText,
-            postImageRes = imageRes,
-            storagePath = storagePath,
+            postImageRes = com.example.util.MediaStorageResolver.toStorableKey(imageRes),
+            storagePath = com.example.util.MediaStorageResolver.toStorableKey(storagePath),
             caption = caption,
             likesCount = 0,
             isLiked = false,
@@ -401,7 +533,10 @@ class SocialRepository(
             commentsCount = 0,
             isPublic = true,
             timeAgo = "Just now",
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
+            storageProvider = provider,
+            mimeType = mimeType,
+            fileSize = fileSize
         )
         // Source of truth is Supabase: create remotely first, cache locally only on success.
         val created = supabaseService.createPost(post.copy(id = 0)).getOrThrow()
@@ -412,6 +547,7 @@ class SocialRepository(
         // The success notification is only inserted after the backend actually persisted the post.
         val notif = NotificationEntity(
             username = profile.handle,
+            recipientHandle = profile.handle,
             avatarType = profile.avatarType,
             actionText = "Your post was published successfully.",
             timeAgo = "Just now",
@@ -425,12 +561,12 @@ class SocialRepository(
         val post = dao.getPostById(postId) ?: return
         val remoteKey = post.remoteId.takeIf { it.isNotBlank() }
         
-        // 1. HARD DELETE every B2 object that belongs to this post.
+        // 1. HARD DELETE every R2 object that belongs to this post.
         val targets = listOfNotNull(post.postImageRes, post.storagePath, post.thumbnailPath)
         for (target in targets) {
             if (target.isNotBlank() && target != "default") {
-                android.util.Log.d("SocialRepository", "Hard-deleting B2 post media: $target")
-                runCatching { supabaseService.deleteMediaFromB2(target).getOrThrow() }
+                android.util.Log.d("SocialRepository", "Hard-deleting R2 post media: $target")
+                runCatching { supabaseService.deleteMediaFromR2(target).getOrThrow() }
             }
         }
 
@@ -453,38 +589,80 @@ class SocialRepository(
         videoUrl: String? = null,
         storagePath: String? = null,
         thumbnailPath: String? = null,
-        location: String = ""
+        location: String = "",
+        durationSecs: Int = 0,
+        mimeType: String? = null,
+        fileSize: Long = 0,
+        provider: String = "cloudflare_r2"
     ): Long {
         val reel = ReelEntity(
             author = profile.name,
             handle = profile.handle,
-            avatarType = profile.avatarType,
-            userAvatarPath = profile.avatarPath,
+            avatarType = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarType),
+            userAvatarPath = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarPath),
             caption = caption,
             music = music.ifBlank { "Original Audio" },
-            imageRes = imageRes.ifBlank { "" },
-            videoUrl = videoUrl,
-            storagePath = storagePath,
-            thumbnailPath = thumbnailPath,
+            imageRes = com.example.util.MediaStorageResolver.toStorableKey(imageRes.ifBlank { "" }),
+            videoUrl = com.example.util.MediaStorageResolver.toStorableKey(videoUrl),
+            storagePath = com.example.util.MediaStorageResolver.toStorableKey(storagePath),
+            thumbnailPath = com.example.util.MediaStorageResolver.toStorableKey(thumbnailPath),
             location = location,
             likesCount = 0,
             commentsCount = 0,
             sharesCount = 0,
+            durationSecs = durationSecs,
             isLiked = false,
             isSaved = false,
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
+            storageProvider = provider,
+            mimeType = mimeType,
+            fileSize = fileSize
         )
         // Remote first: cache the reel only after Supabase persists it and returns its remote id.
         val created = supabaseService.createReel(reel.copy(id = 0)).getOrThrow()
         val cached = created.copy(id = 0)
         dao.insertReel(cached)
+
+        // ALSO SHARE AS A POST ON HOME FEED & PROFILE
+        val reelPost = PostEntity(
+            remoteId = cached.remoteId,
+            username = profile.name,
+            userHandle = profile.handle,
+            userAvatarType = profile.avatarType,
+            userAvatarPath = profile.avatarPath,
+            actionText = "${profile.handle} shared a new reel",
+            postImageRes = cached.imageRes,
+            storagePath = cached.storagePath,
+            thumbnailPath = cached.thumbnailPath,
+            caption = caption,
+            likesCount = 0,
+            isLiked = false,
+            isSaved = false,
+            isReposted = false,
+            repostsCount = 0,
+            commentsCount = 0,
+            isPublic = true,
+            isReelPost = true,
+            timeAgo = "Just now",
+            timestamp = cached.timestamp,
+            storageProvider = cached.storageProvider,
+            mimeType = cached.mimeType,
+            fileSize = cached.fileSize
+        )
+        // Persist the post link too
+        runCatching { 
+            val createdPost = supabaseService.createPost(reelPost.copy(id = 0)).getOrThrow()
+            dao.insertPost(createdPost.copy(id = 0))
+        }
+
         return cached.id
     }
 
     suspend fun toggleReelLike(reel: ReelEntity, currentUid: String) {
         if (currentUid.isBlank()) throw Exception("Authentication required to like")
         val newLiked = !reel.isLiked
-        val remoteReelId = reel.remoteId.toLongOrNull() ?: throw Exception("Reel has no remote ID")
+        val remoteReelId = reel.remoteId.toLongOrNull() ?: reel.id.takeIf { it > 0 }
+            ?: throw Exception("Reel has no remote ID")
 
         // 1. Update Supabase first
         supabaseService.toggleReelLike(remoteReelId, currentUid, newLiked).getOrThrow()
@@ -494,26 +672,46 @@ class SocialRepository(
         dao.updateReelLike(reel.id, newLiked, newCount)
     }
 
+    suspend fun toggleReelSave(reel: ReelEntity, currentUid: String) {
+        if (currentUid.isBlank()) throw Exception("Authentication required to save")
+        val newSaved = !reel.isSaved
+        val remoteReelId = reel.remoteId.toLongOrNull() ?: reel.id.takeIf { it > 0 }
+            ?: throw Exception("Reel has no remote ID")
+
+        // 1. Update Supabase first
+        supabaseService.toggleReelSave(remoteReelId, currentUid, newSaved).getOrThrow()
+
+        // 2. Update local state
+        dao.updateReelSave(reel.id, newSaved)
+    }
+
+    suspend fun toggleReelRepost(reel: ReelEntity, currentUid: String) {
+        if (currentUid.isBlank()) throw Exception("Authentication required to repost")
+        val remoteReelId = reel.remoteId.toLongOrNull() ?: reel.id.takeIf { it > 0 }
+            ?: throw Exception("Reel has no remote ID")
+        supabaseService.toggleReelRepost(remoteReelId, currentUid, true).getOrThrow()
+    }
+
     suspend fun deleteReel(id: Long) {
         val reel = dao.getReelById(id) ?: return
         val remoteKey = reel.remoteId.takeIf { it.isNotBlank() }
 
-        // 1. HARD DELETE every B2 object that belongs to this reel.
+        // 1. HARD DELETE every R2 object that belongs to this reel.
         //    Try the stable storage paths first, then fall back to URLs.
         //    Each target is attempted independently so one failure never
         //    blocks the rest of the cleanup.
-        val b2Targets = mutableListOf<String?>()
-        b2Targets += reel.storagePath
-        b2Targets += reel.thumbnailPath
-        b2Targets += reel.videoUrl?.takeIf { it.startsWith("http") }
-        b2Targets += reel.imageRes.takeIf { it.startsWith("http") }
-        for (target in b2Targets.filter { !it.isNullOrBlank() }) {
+        val r2Targets = mutableListOf<String?>()
+        r2Targets += reel.storagePath
+        r2Targets += reel.thumbnailPath
+        r2Targets += reel.videoUrl?.takeIf { it.startsWith("http") }
+        r2Targets += reel.imageRes.takeIf { it.startsWith("http") }
+        for (target in r2Targets.filter { !it.isNullOrBlank() }) {
             val t = target!!.trim()
             try {
-                android.util.Log.d("SocialRepository", "Hard-deleting B2 object for reel $id: $t")
-                supabaseService.deleteMediaFromB2(t).getOrThrow()
+                android.util.Log.d("SocialRepository", "Hard-deleting R2 object for reel $id: $t")
+                supabaseService.deleteMediaFromR2(t).getOrThrow()
             } catch (e: Exception) {
-                android.util.Log.w("SocialRepository", "B2 delete attempt failed for reel $id ($t): ${e.message}")
+                android.util.Log.w("SocialRepository", "R2 delete attempt failed for reel $id ($t): ${e.message}")
             }
         }
 
@@ -530,26 +728,54 @@ class SocialRepository(
         dao.deleteReel(id)
     }
 
+    suspend fun updateReel(reel: ReelEntity): Result<Unit> {
+        dao.updateReel(reel)
+        return if (reel.remoteId.isNotBlank()) {
+            supabaseService.updateReelRemote(reel.remoteId, reel.caption, reel.music)
+        } else {
+            Result.success(Unit)
+        }
+    }
+
     suspend fun syncReelsFromSupabase(reels: List<ReelEntity>, currentUid: String = "") {
         val likedReels = if (currentUid.isNotBlank()) {
             supabaseService.fetchUserLikedReels(currentUid)
         } else emptySet()
 
-        val localized = reels.map { reel -> 
+        val localized = reels.filter { 
+            !com.example.util.MediaStorageResolver.isBrokenLegacyB2(it.videoUrl, it.storagePath) 
+        }.map { reel -> 
             reel.copy(
                 isLiked = reel.remoteId.toLongOrNull() in likedReels
             )
         }
         val remoteIds = localized.map { it.remoteId }.filter { it.isNotBlank() }.toSet()
         
-        dao.getReelsSnapshot().forEach { cached ->
-            if (cached.remoteId.isNotBlank() && cached.remoteId !in remoteIds) {
-                dao.deleteReel(cached.id)
-            }
-        }
+        // NEVER wipe the local cache when the remote list is empty: an empty
+        // result almost always means the fetch FAILED (network hiccup, expired
+        // token, temporary permission error), not that every reel was deleted.
+        // Wiping here is what made the Reels feed go permanently white/blank.
         if (localized.isNotEmpty()) {
+            val reelSnapshot = dao.getReelsSnapshot()
+            // Drop reels already duplicated in the cache (same remoteId), keep first.
+            reelSnapshot.groupBy { it.remoteId }.filter { it.key.isNotBlank() }.forEach { (_, rows) ->
+                rows.drop(1).forEach { dao.deleteReel(it.id) }
+            }
+            reelSnapshot.forEach { cached ->
+                if (cached.remoteId.isNotBlank() && cached.remoteId !in remoteIds) {
+                    dao.deleteReel(cached.id)
+                }
+            }
             android.util.Log.d("SocialRepository", "Caching ${localized.size} Supabase reels")
-            dao.insertReels(localized)
+            // Reuse local ids for rows we already cached so REPLACE updates in place
+            // (inserting with id=0 would duplicate every reel on each sync).
+            val localByRemoteId = dao.getReelsSnapshot().associateBy { it.remoteId }
+            val deduped = localized.map { r ->
+                localByRemoteId[r.remoteId]?.let { r.copy(id = it.id) } ?: r
+            }.distinctBy { it.remoteId.ifBlank { "local_${it.id}" } }
+            dao.insertReels(deduped)
+        } else {
+            android.util.Log.w("SocialRepository", "Reel sync skipped: remote fetch returned 0 reels (kept local cache)")
         }
     }
 
@@ -568,12 +794,14 @@ class SocialRepository(
 
         val validPosts = posts.filter { post ->
             val legacyMedia = post.postImageRes.trim()
+            val isBroken = com.example.util.MediaStorageResolver.isBrokenLegacyB2(post.postImageRes, post.storagePath)
+            
             val hasLegacyMedia = legacyMedia.isNotEmpty() && 
                     !legacyMedia.equals("default", ignoreCase = true) && 
                     !legacyMedia.equals("null", ignoreCase = true)
             val hasStableMedia = !post.storagePath.isNullOrBlank()
             
-            hasLegacyMedia || hasStableMedia
+            (hasLegacyMedia || hasStableMedia) && !isBroken
         }.map { post ->
             val rId = post.remoteId.toLongOrNull()
             post.copy(
@@ -584,14 +812,27 @@ class SocialRepository(
         }
 
         val remoteIds = validPosts.map { it.remoteId }.filter { it.isNotBlank() }.toSet()
-        dao.getPostsSnapshot().forEach { cached ->
+        val snapshot = dao.getPostsSnapshot()
+        // First drop duplicates already in the cache (same remoteId cached multiple
+        // times by earlier syncs) — keep the first occurrence of each remoteId.
+        snapshot.groupBy { it.remoteId }.filter { it.key.isNotBlank() }.forEach { (rid, rows) ->
+            rows.drop(1).forEach { dao.deletePost(it.id) }
+        }
+        snapshot.forEach { cached ->
             if (cached.remoteId.isNotBlank() && cached.remoteId !in remoteIds) {
                 dao.deletePost(cached.id)
             }
         }
         if (validPosts.isNotEmpty()) {
             android.util.Log.d("SocialRepository", "Caching ${validPosts.size} Supabase posts")
-            dao.insertPosts(validPosts)
+            // Reuse local ids for rows we already cached so REPLACE updates in place.
+            // Without this, inserting with id=0 auto-generates a NEW row for every
+            // remote post on every sync → duplicates pile up in the feed.
+            val localByRemoteId = dao.getPostsSnapshot().associateBy { it.remoteId }
+            val deduped = validPosts.map { p ->
+                localByRemoteId[p.remoteId]?.let { p.copy(id = it.id) } ?: p
+            }.distinctBy { it.remoteId.ifBlank { "local_${it.id}" } }
+            dao.insertPosts(deduped)
         }
     }
 
@@ -613,12 +854,12 @@ class SocialRepository(
     suspend fun deleteStory(story: StoryEntity) {
         if (!story.isOwn) throw IllegalStateException("Cannot delete another user's story")
         
-        // 1. HARD DELETE every B2 object that belongs to this story.
+        // 1. HARD DELETE every R2 object that belongs to this story.
         val targets = listOfNotNull(story.imageRes, story.storagePath)
         for (target in targets) {
             if (target.isNotBlank() && target != "default") {
-                android.util.Log.d("SocialRepository", "Hard-deleting B2 story media: $target")
-                runCatching { supabaseService.deleteMediaFromB2(target).getOrThrow() }
+                android.util.Log.d("SocialRepository", "Hard-deleting R2 story media: $target")
+                runCatching { supabaseService.deleteMediaFromR2(target).getOrThrow() }
             }
         }
 
@@ -650,10 +891,12 @@ class SocialRepository(
     }
 
     suspend fun syncChatMessagesFromSupabase(messages: List<ChatMessageEntity>): List<ChatMessageEntity> {
-        if (messages.isNotEmpty()) {
-            android.util.Log.d("SocialRepository", "Syncing ${messages.size} chat messages to Room")
-            dao.insertChatMessages(messages)
-        }
+        if (messages.isEmpty()) return messages
+        // Only insert messages that don't exist locally (remoteId check).
+        // Room REPLACE strategy is now backed by a UNIQUE index on remoteId, but
+        // explicit filtering prevents unnecessary Flow emissions in the ViewModel.
+        android.util.Log.d("SocialRepository", "Syncing ${messages.size} chat messages to Room")
+        dao.insertChatMessages(messages)
         return messages
     }
 
@@ -688,7 +931,11 @@ class SocialRepository(
 
     suspend fun syncUsersFromSupabase(users: List<AppUserEntity>) {
         if (users.isNotEmpty()) {
-            android.util.Log.d("SocialRepository", "Syncing ${users.size} users to Room")
+            android.util.Log.d("SocialRepository", "Syncing ${users.size} users to Room (Full Replacement)")
+            
+            // CRITICAL: To ensure users deleted on the server disappear from the app,
+            // we must treat the fetched list as the source of truth and clear the local table.
+            dao.deleteAllUsers()
             dao.insertUsers(users)
 
             val cachedProfile = userProfile.first()
@@ -741,21 +988,23 @@ class SocialRepository(
         originalText: String = "",
         isTranslated: Boolean = false,
         translationLang: String = "",
-        receiverHandle: String = ""
+        receiverHandle: String = "",
+        storageProvider: String = "cloudflare_r2"
     ) {
         val entity = ChatMessageEntity(
             roomId = roomId,
             senderName = profile.name,
             senderHandle = profile.handle,
             receiverHandle = receiverHandle,
-            senderAvatar = profile.avatarType,
-            senderAvatarPath = profile.avatarPath,
+            senderAvatar = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarType),
+            senderAvatarPath = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarPath),
             messageText = text,
             originalText = originalText,
             isTranslated = isTranslated,
             translationLang = translationLang,
-            mediaUrl = mediaUrl,
-            storagePath = storagePath,
+            mediaUrl = com.example.util.MediaStorageResolver.toStorableKey(mediaUrl),
+            storagePath = com.example.util.MediaStorageResolver.toStorableKey(storagePath),
+            storageProvider = storageProvider,
             mediaType = mediaType,
             time = "Just now",
             isFromMe = true,
@@ -789,7 +1038,9 @@ class SocialRepository(
             handle = profile.handle,
             bio = profile.bio,
             location = profile.location,
-            isPublic = profile.isPublic
+            isPublic = profile.isPublic,
+            avatarProvider = "cloudflare_r2",
+            coverProvider = "cloudflare_r2"
         ).getOrThrow()
         dao.insertOrUpdateProfile(profile)
         dao.getUserByUid(profile.uid)?.let { user ->
@@ -804,7 +1055,9 @@ class SocialRepository(
                     bio = profile.bio,
                     location = profile.location,
                     isPublic = profile.isPublic,
-                    registeredAt = user.registeredAt
+                    registeredAt = user.registeredAt,
+                    avatarProvider = "cloudflare_r2",
+                    coverProvider = "cloudflare_r2"
                 )
             )
         }
@@ -814,12 +1067,12 @@ class SocialRepository(
         val mediaUrl = if (deleteAvatar) profile.avatarType else profile.coverType
         val mediaPath = if (deleteAvatar) profile.avatarPath else profile.coverPath
 
-        // 1. Hard delete all related B2 objects
+        // 1. Hard delete all related R2 objects
         val targets = listOfNotNull(mediaUrl, mediaPath)
         for (target in targets) {
             if (target.isNotBlank() && target != "default") {
-                android.util.Log.d("SocialRepository", "Hard-deleting B2 profile media: $target")
-                runCatching { supabaseService.deleteMediaFromB2(target).getOrThrow() }
+                android.util.Log.d("SocialRepository", "Hard-deleting R2 profile media: $target")
+                runCatching { supabaseService.deleteMediaFromR2(target).getOrThrow() }
             }
         }
 
@@ -827,11 +1080,11 @@ class SocialRepository(
         dao.getUserPostsByAction(profile.handle, actionPattern).forEach { post ->
             val remoteKey = post.remoteId.takeIf { it.isNotBlank() }
             
-            // Delete post media from B2
+            // Delete post media from R2
             val pTargets = listOfNotNull(post.postImageRes, post.storagePath, post.thumbnailPath)
             for (t in pTargets) {
                 if (t.isNotBlank() && t != "default") {
-                    runCatching { supabaseService.deleteMediaFromB2(t).getOrThrow() }
+                    runCatching { supabaseService.deleteMediaFromR2(t).getOrThrow() }
                 }
             }
             
@@ -849,36 +1102,68 @@ class SocialRepository(
         bytes: ByteArray,
         fileName: String,
         mimeType: String,
-        uploadType: String, // "profile", "cover", "post", "reel", "story"
+        uploadType: String, // "profile", "cover", "post", "reel", "story", "chat"
         onProgress: ((Int) -> Unit)? = null
     ): Result<MediaUploadResult> {
-        android.util.Log.d("SocialRepository", "Uploading $uploadType: $fileName")
-        val res = supabaseService.uploadMediaToB2(bytes, fileName, mimeType, uploadType, onProgress)
+        val resolvedType = if (uploadType == "post") {
+            if (mimeType.startsWith("video/")) "post_video" else "post_image"
+        } else uploadType
+
+        android.util.Log.d("SocialRepository", "Uploading $resolvedType: $fileName")
+        val res = supabaseService.uploadMediaToR2(bytes, fileName, mimeType, resolvedType, onProgress)
         return res.map { json ->
             val url = json.optString("url", "")
-            // b2-upload returns "path"; accept legacy "storage_path" too.
-            val storagePath = json.optString("storage_path", "")
+            // Check all possible return keys
+            val storagePath = json.optString("key", "")
                 .takeIf { it.isNotBlank() && it != "null" }
                 ?: json.optString("path", "")
-            val thumbnailPath = json.optString("thumbnail_path").takeIf { it != "null" && it.isNotBlank() }
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?: json.optString("storage_path", "")
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?: com.example.util.MediaStorageResolver.toStorableKey(url)
+            
+            val thumbnailPath = json.optString("thumbnail_path")
+                .takeIf { it != "null" && it.isNotBlank() }
+                ?.let { com.example.util.MediaStorageResolver.toStorableKey(it) }
             
             if (url.isBlank() && storagePath.isBlank()) {
-                throw Exception("B2 Upload failed: No URL or storage path returned")
+                android.util.Log.e("SocialRepository", "R2 Upload failed. Response: $json")
+                throw Exception("Upload failed: Server did not return a valid path")
             }
-            MediaUploadResult(url, storagePath, thumbnailPath)
+            
+            MediaUploadResult(
+                url = url, 
+                storagePath = storagePath, 
+                thumbnailPath = thumbnailPath,
+                mimeType = json.optString("type").takeIf { it.isNotBlank() },
+                fileSize = json.optLong("size", 0),
+                provider = "cloudflare_r2"
+            )
         }
     }
 
 
-    suspend fun addStory(imageRes: String, storagePath: String?, caption: String, profile: UserProfileEntity) {
+    suspend fun addStory(
+        imageRes: String, 
+        storagePath: String?, 
+        caption: String, 
+        profile: UserProfileEntity,
+        mimeType: String? = null,
+        fileSize: Long = 0,
+        provider: String = "cloudflare_r2"
+    ) {
         val story = StoryEntity(
             username = profile.handle,
-            userAvatarType = profile.avatarType,
-            userAvatarPath = profile.avatarPath,
-            imageRes = imageRes,
-            storagePath = storagePath,
+            userAvatarType = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarType),
+            userAvatarPath = com.example.util.MediaStorageResolver.toStorableKey(profile.avatarPath),
+            imageRes = com.example.util.MediaStorageResolver.toStorableKey(imageRes),
+            storagePath = com.example.util.MediaStorageResolver.toStorableKey(storagePath),
             caption = caption,
-            isOwn = true
+            isOwn = true,
+            timestamp = System.currentTimeMillis(),
+            storageProvider = provider,
+            mimeType = mimeType,
+            fileSize = fileSize
         )
         val created = supabaseService.createStory(story).getOrThrow()
         dao.insertStory(created)
@@ -908,9 +1193,10 @@ class SocialRepository(
         dao.clearAllNotifications()
     }
 
-    suspend fun addNotification(username: String, avatarType: String, actionText: String) {
+    suspend fun addNotification(username: String, avatarType: String, actionText: String, recipient: String = "") {
         val notif = NotificationEntity(
             username = username,
+            recipientHandle = recipient,
             avatarType = avatarType,
             actionText = actionText,
             timeAgo = "Just now",
@@ -969,6 +1255,14 @@ class SocialRepository(
                 actionText = if (newIsFriend) "followed you back — you are now Friends 🤝🎉"
                              else "started following you 🤝"
             )
+
+            // Push to the followed user's other devices via the secured Edge
+            // Function (it re-verifies the follow row server-side). Fire-and-forget.
+            scope.launch {
+                pushService.notifyFollow(existing.id).onFailure {
+                    android.util.Log.w("SocialRepository", "Follow push skipped", it)
+                }
+            }
         }
 
         val updatedFollowers = if (newIsFriend) currentProfile.followersCount else currentProfile.followersCount
@@ -1056,7 +1350,7 @@ class SocialRepository(
         val dmRoomId = "dm_${existing.handle}"
         sendChatMessage(
             roomId = dmRoomId,
-            text = "🎁 Sent you $amount Vyn Reward Credits! 💰",
+            text = "🎁 Sent you $amount Flare Reward Credits! 💰",
             profile = currentProfile
         )
         addNotification(

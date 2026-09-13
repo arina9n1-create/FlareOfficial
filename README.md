@@ -41,7 +41,7 @@ The Backblaze B2 bucket (`B2_BUCKET`) stays **fully Private**. Uploaded media is
    `https://{project}.supabase.co/functions/v1/b2-download?path=users/{uid}/{type}/{file}`
    which is what gets stored in the database (`avatar_type`, `cover_type`, posts, stories, reels, chat media).
 2. `b2-download` authenticates the viewer's Supabase JWT, validates the requested path, then 302-redirects to a short-lived (30 min) pre-signed B2 URL. The bucket keys/credentials never reach the client.
-3. The Android app registers a global Coil image loader (`Vyn9Application`) that attaches `apikey` + `Authorization: Bearer <token>` to every `b2-download` request — so only signed-in app sessions can resolve media. Everyone else gets a 401 and the UI shows a graceful placeholder instead of a blank image.
+3. The Android app registers a global Coil image loader (`FlareOfficialApplication`) that attaches `apikey` + `Authorization: Bearer <token>` to every `b2-download` request — so only signed-in app sessions can resolve media. Everyone else gets a 401 and the UI shows a graceful placeholder instead of a blank image.
 
 Deploy both functions after any change:
 
@@ -56,12 +56,12 @@ Apply `supabase/migrations/20260827010000_private_media_gateway_rewrite.sql` onc
 
 ## Deep links (App Links)
 
-The launcher declares App Links for `https://vyn9.app` with `autoVerify="true"` for
+The launcher declares App Links for `https://flareofficial.app` with `autoVerify="true"` for
 `/@username`, `/post/`, `/video/` and `/reel/` paths. Verification only succeeds once
-`https://vyn9.app/.well-known/assetlinks.json` is live on the domain and contains the
+`https://flareofficial.app/.well-known/assetlinks.json` is live on the domain and contains the
 **SHA256 certificate fingerprint of the release signing key** (debug keystores do not
 verify). See `deploy/well-known/assetlinks.example.json` — put the finished file at
-`{web-root}/.well-known/assetlinks.json` on the server that serves `vyn9.app`.
+`{web-root}/.well-known/assetlinks.json` on the server that serves `flareofficial.app`.
 
 ## Build notes
 

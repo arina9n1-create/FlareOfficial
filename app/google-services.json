@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "699725188651",
+    "project_id": "flareofficial-d1084",
+    "storage_bucket": "flareofficial-d1084.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:699725188651:android:a4cde705b4abfa7d5be46e",
+        "android_client_info": {
+          "package_name": "com.flareofficial.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHqEH2mqpbfrbeKcR4ouVjzdOn6MGiaro"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

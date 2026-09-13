@@ -1,12 +1,12 @@
-﻿-- =============================================================================
--- VYN NUMBER — Phone-number communication system
+-- =============================================================================
+-- VYN NUMBER � Phone-number communication system
 -- Run this whole file once in: Supabase Dashboard -> SQL Editor -> Run
 -- =============================================================================
 -- Concept:
 --   * VYN NUMBER identity = exactly ONE per verified, normalized (E.164) phone.
 --   * Identity is tied to the Supabase phone-auth user created by the OTP flow
 --     (same phone always returns the same auth uid -> same identity), so
---     re-verifying the same number from a different Vyn9 account loads the
+--     re-verifying the same number from a different FlareOfficial account loads the
 --     SAME persistent identity and its existing conversations.
 --   * All writes go through SECURITY DEFINER RPCs that check auth.uid();
 --     direct INSERT/UPDATE/DELETE is blocked by RLS (no write policies).

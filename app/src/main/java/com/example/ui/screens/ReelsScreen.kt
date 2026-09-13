@@ -1,6 +1,9 @@
-package com.example.ui.screens
+﻿package com.example.ui.screens
 
+import android.content.Context
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -40,8 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.components.VynAvatar
-import com.example.ui.components.VynImage
+import com.example.ui.components.FlareAvatar
+import com.example.ui.components.FlareImage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.SocialViewModel
 import com.example.data.remote.SupabaseService
@@ -129,8 +132,8 @@ data class ReelComment(
     var isLiked: Boolean = false
 )
 
-data class InstagramReelData(
-    val id: Int,
+data class FlareOfficialReelData(
+    val id: Long,
     val author: String,
     val handle: String,
     val avatarType: String,
@@ -153,6 +156,15 @@ data class InstagramReelData(
     val remoteId: String = ""
 )
 
+private fun hasValidatedInternet(context: Context): Boolean {
+    val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return false
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ReelsScreen(
@@ -172,8 +184,8 @@ fun ReelsScreen(
             *remoteReels
                 .filter { it.imageRes.isNotBlank() || !it.videoUrl.isNullOrBlank() } // Filter out broken reels
                 .map { reel ->
-                InstagramReelData(
-                    id = reel.id.toInt(),
+                FlareOfficialReelData(
+                    id = reel.id,
                     author = reel.author.ifBlank { reel.handle },
                     handle = reel.handle,
                     avatarType = reel.avatarType,
@@ -200,34 +212,57 @@ fun ReelsScreen(
     val pagerState = rememberPagerState(pageCount = { remoteReelsData.size })
     val coroutineScope = rememberCoroutineScope()
 
-    // Background pre-caching for upcoming and previous video reels
-    LaunchedEffect(pagerState.currentPage, remoteReelsData.size) {
-        val nextIdx = pagerState.currentPage + 1
-        if (nextIdx < remoteReelsData.size) {
-            val videoRef = remoteReelsData[nextIdx].videoUrl
-            val resolved = com.example.util.MediaStorageResolver.resolve(videoRef)
-            if (resolved.isNotBlank()) {
-                com.example.media.player.ExoPlayerCacheManager.preloadVideo(context, resolved)
+    // Jump to a specific reel if requested (e.g. from Home feed link)
+    val scrollToReelId by viewModel.scrollToReelId.collectAsState()
+    LaunchedEffect(scrollToReelId, remoteReelsData.size) {
+        val targetId = scrollToReelId
+        if (!targetId.isNullOrBlank() && remoteReelsData.isNotEmpty()) {
+            val targetIdx = remoteReelsData.indexOfFirst { it.remoteId == targetId }
+            if (targetIdx >= 0) {
+                pagerState.scrollToPage(targetIdx)
+                viewModel.onReelScrollHandled()
             }
         }
-        val prevIdx = pagerState.currentPage - 1
-        if (prevIdx >= 0) {
-            val videoRef = remoteReelsData[prevIdx].videoUrl
-            val resolved = com.example.util.MediaStorageResolver.resolve(videoRef)
-            if (resolved.isNotBlank()) {
-                com.example.media.player.ExoPlayerCacheManager.preloadVideo(context, resolved)
+    }
+
+    // Background pre-caching for the NEXT 2 upcoming reels (and previous one).
+    // Warms the disk cache while the user watches, so by the time they scroll,
+    // playback starts instantly — no spinner, no waiting.
+    LaunchedEffect(pagerState.currentPage, remoteReelsData.size) {
+        val idx = pagerState.currentPage
+        if (idx >= 0 && idx < remoteReelsData.size) {
+            val indices = listOf(idx + 1, idx + 2, idx - 1)
+            for (i in indices) {
+                if (i < 0 || i >= remoteReelsData.size) continue
+                val videoRef = remoteReelsData[i].videoUrl
+                val resolved = com.example.util.MediaStorageResolver.resolve(videoRef)
+                if (resolved.isNotBlank()) {
+                    com.example.media.player.ExoPlayerCacheManager.preloadVideo(context, resolved)
+                }
             }
         }
     }
 
     var isMuted by remember { mutableStateOf(false) }
     var showMuteIndicator by remember { mutableStateOf(false) }
-    var activeCommentsReel by remember { mutableStateOf<InstagramReelData?>(null) }
-    var activeShareReel by remember { mutableStateOf<InstagramReelData?>(null) }
+    var activeCommentsReel by remember { mutableStateOf<FlareOfficialReelData?>(null) }
+    var activeShareReel by remember { mutableStateOf<FlareOfficialReelData?>(null) }
+    var reelToEdit by remember { mutableStateOf<FlareOfficialReelData?>(null) }
     var showCreateSheet by remember { mutableStateOf(false) }
+    var isCurrentReelPlaying by remember(pagerState.currentPage) { mutableStateOf(false) }
+    var hasInternet by remember { mutableStateOf(hasValidatedInternet(context)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            hasInternet = hasValidatedInternet(context)
+            delay(1000)
+        }
+    }
 
     LaunchedEffect(pagerState.currentPage) {
-        viewModel.setActiveReelPage(pagerState.currentPage)
+        if (pagerState.currentPage >= 0 && pagerState.currentPage < remoteReelsData.size) {
+            viewModel.setActiveReelPage(pagerState.currentPage)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -248,10 +283,10 @@ fun ReelsScreen(
         maxOf(3, adminConfig.requiredReelWatchSeconds)
     }
 
-    // Video watch & reward progression
-    LaunchedEffect(pagerState.currentPage, targetSeconds) {
+    // Video watch & reward progression only advances during validated online playback.
+    LaunchedEffect(pagerState.currentPage, targetSeconds, isCurrentReelPlaying, hasInternet) {
         val activeReel = remoteReelsData.getOrNull(pagerState.currentPage)
-        if (activeReel != null) {
+        if (activeReel != null && isCurrentReelPlaying && hasInternet) {
             viewModel.recordContentAdImpression(
                 contentId = "reel_${activeReel.id}",
                 creatorId = activeReel.handle,
@@ -260,12 +295,18 @@ fun ReelsScreen(
             )
         }
 
+        if (!isCurrentReelPlaying || !hasInternet || remoteReelsData.isEmpty()) {
+            currentProgress = 0f
+            return@LaunchedEffect
+        }
+
         currentProgress = 0f
         val stepMs = 150L
         val totalSteps = (targetSeconds * 1000L) / stepMs
 
         for (i in 1..totalSteps) {
             delay(stepMs)
+            if (!isCurrentReelPlaying || !hasInternet) return@LaunchedEffect
             currentProgress = (i.toFloat() / totalSteps.toFloat()).coerceIn(0f, 1f)
         }
 
@@ -281,7 +322,7 @@ fun ReelsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .testTag("instagram_reels_screen_root")
+            .testTag("flareofficial_reels_screen_root")
     ) {
         // --- 0. REEL UPLOAD PROGRESS OVERLAY ---
         val reelUploadProgress by viewModel.reelUploadProgress.collectAsState()
@@ -289,16 +330,24 @@ fun ReelsScreen(
             ReelUploadOverlay(progress = progress)
         }
 
-        // --- 1. VERTICAL PAGER (Instagram Reels Vertical Scroll) ---
+        // --- 1. VERTICAL PAGER (FlareOfficial Reels Vertical Scroll) ---
         VerticalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            key = { remoteReelsData[it].id }
+            key = { index -> 
+                if (index < remoteReelsData.size) {
+                    val r = remoteReelsData[index]
+                    r.remoteId.ifBlank { r.id.toString() }
+                } else {
+                    index // Fallback
+                }
+            }
         ) { page ->
+            if (page >= remoteReelsData.size) return@VerticalPager
             val reel = remoteReelsData[page]
             val isCurrentPage = pagerState.currentPage == page
 
-            InstagramReelPageItem(
+            FlareOfficialReelPageItem(
                 reel = reel,
                 isCurrentPage = isCurrentPage,
                 isMuted = isMuted,
@@ -311,11 +360,64 @@ fun ReelsScreen(
                     }
                 },
                 onLikeClicked = {
-                    reel.isLiked = !reel.isLiked
-                    reel.likes += if (reel.isLiked) 1 else -1
+                    val shouldLike = !reel.isLiked
                     viewModel.toggleReelLike(
                         ReelEntity(
-                            id = reel.id.toLong(),
+                            id = reel.id,
+                            remoteId = reel.remoteId,
+                            author = reel.author,
+                            handle = reel.handle,
+                            avatarType = reel.avatarType,
+                            caption = reel.caption,
+                            music = reel.music,
+                            imageRes = reel.imageRes,
+                            videoUrl = reel.videoUrl,
+                            location = reel.location,
+                            likesCount = reel.likes,
+                            commentsCount = reel.commentsCount,
+                            sharesCount = reel.sharesCount,
+                            isLiked = reel.isLiked,
+                            isSaved = reel.isSaved
+                        ),
+                        onSuccess = {
+                            reel.isLiked = shouldLike
+                            reel.likes += if (shouldLike) 1 else -1
+                        }
+                    )
+                },
+                onDoubleTapLike = {
+                    if (!reel.isLiked) {
+                        viewModel.toggleReelLike(
+                            ReelEntity(
+                                id = reel.id,
+                                remoteId = reel.remoteId,
+                                author = reel.author,
+                                handle = reel.handle,
+                                avatarType = reel.avatarType,
+                                caption = reel.caption,
+                                music = reel.music,
+                                imageRes = reel.imageRes,
+                                videoUrl = reel.videoUrl,
+                                location = reel.location,
+                                likesCount = reel.likes,
+                                commentsCount = reel.commentsCount,
+                                sharesCount = reel.sharesCount,
+                                isLiked = false,
+                                isSaved = reel.isSaved
+                            ),
+                            onSuccess = {
+                                reel.isLiked = true
+                                reel.likes += 1
+                            }
+                        )
+                    }
+                },
+                onCommentClicked = { activeCommentsReel = reel },
+                onShareClicked = {
+                    viewModel.toggleReelRepost(
+                        ReelEntity(
+                            id = reel.id,
+                            remoteId = reel.remoteId,
                             author = reel.author,
                             handle = reel.handle,
                             avatarType = reel.avatarType,
@@ -332,40 +434,44 @@ fun ReelsScreen(
                         )
                     )
                 },
-                onDoubleTapLike = {
-                    if (!reel.isLiked) {
-                        reel.isLiked = true
-                        reel.likes += 1
-                        viewModel.toggleReelLike(
-                            ReelEntity(
-                                id = reel.id.toLong(),
-                                author = reel.author,
-                                handle = reel.handle,
-                                avatarType = reel.avatarType,
-                                caption = reel.caption,
-                                music = reel.music,
-                                imageRes = reel.imageRes,
-                                videoUrl = reel.videoUrl,
-                                location = reel.location,
-                                likesCount = reel.likes,
-                                commentsCount = reel.commentsCount,
-                                sharesCount = reel.sharesCount,
-                                isLiked = true,
-                                isSaved = reel.isSaved
-                            )
+                onSaveClicked = {
+                    reel.isSaved = !reel.isSaved
+                    viewModel.toggleReelSave(
+                        ReelEntity(
+                            id = reel.id,
+                            remoteId = reel.remoteId,
+                            author = reel.author,
+                            handle = reel.handle,
+                            avatarType = reel.avatarType,
+                            caption = reel.caption,
+                            music = reel.music,
+                            imageRes = reel.imageRes,
+                            videoUrl = reel.videoUrl,
+                            location = reel.location,
+                            likesCount = reel.likes,
+                            commentsCount = reel.commentsCount,
+                            sharesCount = reel.sharesCount,
+                            isLiked = reel.isLiked,
+                            isSaved = reel.isSaved
                         )
+                    )
+                },
+                onPlaybackStateChange = { playing ->
+                    if (isCurrentPage) isCurrentReelPlaying = playing
+                },
+                onMediaError = {
+                    // Skip or hide broken reels
+                    coroutineScope.launch {
+                        if (page < remoteReelsData.size - 1) {
+                            pagerState.animateScrollToPage(page + 1)
+                        }
                     }
                 },
-                onCommentClicked = { activeCommentsReel = reel },
-                onShareClicked = { activeShareReel = reel },
-                onSaveClicked = { reel.isSaved = !reel.isSaved },
                 onFollowClicked = { reel.isFollowing = !reel.isFollowing },
                 onOpenProfile = { viewModel.setTab(com.example.ui.viewmodel.MainTab.PROFILE) },
-                onEditClicked = {
-                    android.widget.Toast.makeText(context, "Edit feature coming soon! ✨", android.widget.Toast.LENGTH_SHORT).show()
-                },
+                onEditClicked = { reelToEdit = reel },
                 onDeleteClicked = {
-                    remoteReels.firstOrNull { it.id.toInt() == reel.id }?.let { target ->
+                    remoteReels.firstOrNull { it.id == reel.id }?.let { target ->
                         viewModel.deleteReel(target)
                         android.widget.Toast.makeText(context, "Reel deleted", android.widget.Toast.LENGTH_SHORT).show()
                     }
@@ -373,7 +479,7 @@ fun ReelsScreen(
             )
         }
 
-        // --- 2. TOP FLOATING INSTAGRAM REELS HEADER ---
+        // --- 2. TOP FLOATING FLAREOFFICIAL REELS HEADER ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -401,7 +507,8 @@ fun ReelsScreen(
                 )
             }
 
-            // Right Actions: Camera / Create, Sound Mute, Live Coin Watcher
+            // Right Actions: Live Coin Watcher, Create (shifted left so the per-reel
+            // 3-dot options menu sits clearly at the far top-right corner)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -443,21 +550,65 @@ fun ReelsScreen(
                     }
                 }
 
-                // Camera Upload Icon
-                IconButton(
+                // CREATE — text action (icon removed, same Create-Reel sheet opens)
+                TextButton(
                     onClick = { showCreateSheet = true },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                        .testTag("ig_reels_camera_button")
+                    modifier = Modifier.testTag("ig_reels_camera_button"),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.PhotoCamera,
-                        contentDescription = "Create Reel",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                    Text(
+                        text = "Create",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
+
+                // Reserve space so the reel 3-dot menu stays clear at the top-right
+                Spacer(modifier = Modifier.width(38.dp))
+            }
+        }
+
+        // --- 2.5 TOP-RIGHT REEL OPTIONS (3-DOT) ---
+        // Drawn at screen level (above the video player layer) so it never gets
+        // covered. Targets the currently visible reel only.
+        var isReelMenuExpanded by remember { mutableStateOf(false) }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 6.dp, end = 8.dp)
+        ) {
+            IconButton(
+                onClick = { isReelMenuExpanded = true },
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+            ) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Reel options", tint = Color.White, modifier = Modifier.size(22.dp))
+            }
+            DropdownMenu(
+                expanded = isReelMenuExpanded,
+                onDismissRequest = { isReelMenuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Edit Reel") },
+                    onClick = {
+                        isReelMenuExpanded = false
+                        reelToEdit = remoteReelsData.getOrNull(pagerState.currentPage)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete Reel", color = MaterialTheme.colorScheme.error) },
+                    onClick = {
+                        isReelMenuExpanded = false
+                        val currentReel = remoteReelsData.getOrNull(pagerState.currentPage)
+                        remoteReels.firstOrNull { it.id == currentReel?.id }?.let { target ->
+                            viewModel.deleteReel(target)
+                            android.widget.Toast.makeText(context, "Reel deleted", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
             }
         }
 
@@ -515,7 +666,7 @@ fun ReelsScreen(
             }
         }
 
-        // --- 5. BOTTOM SEEK PROGRESS BAR (Instagram Reel Line) ---
+        // --- 5. BOTTOM SEEK PROGRESS BAR (FlareOfficial Reel Line) ---
         LinearProgressIndicator(
             progress = { currentProgress },
             modifier = Modifier
@@ -526,37 +677,39 @@ fun ReelsScreen(
             trackColor = Color.White.copy(alpha = 0.15f)
         )
 
-        // --- 6. INSTAGRAM COMMENTS BOTTOM SHEET ---
+        // --- 6. FLAREOFFICIAL COMMENTS BOTTOM SHEET ---
         activeCommentsReel?.let { reel ->
-            InstagramReelCommentsSheet(
+            FlareOfficialReelCommentsSheet(
                 reel = reel,
                 myProfile = profile,
                 onDismiss = { activeCommentsReel = null },
-                onAddComment = { text ->
-                    viewModel.addReelComment(reel.id.toLong(), text)
-                    val newComment = ReelComment(
-                        id = "c_${System.currentTimeMillis()}",
-                        author = profile.name,
-                        handle = profile.handle,
-                        avatarType = profile.avatarType,
-                        userAvatarPath = profile.avatarPath,
-                        text = text,
-                        timeAgo = "Just now",
-                        likes = 0
-                    )
-                    reel.comments.add(0, newComment)
-                    reel.commentsCount += 1
+                onAddComment = { text, ownerHandle ->
+                    val reelRemoteId = reel.remoteId.toLongOrNull() ?: reel.id.toLong()
+                    viewModel.addReelComment(reelRemoteId, text, ownerHandle) {
+                        val newComment = ReelComment(
+                            id = "c_${System.currentTimeMillis()}",
+                            author = profile.name,
+                            handle = profile.handle,
+                            avatarType = profile.avatarType,
+                            userAvatarPath = profile.avatarPath,
+                            text = text,
+                            timeAgo = "Just now",
+                            likes = 0
+                        )
+                        reel.comments.add(0, newComment)
+                        reel.commentsCount += 1
+                    }
                 }
             )
         }
 
-        // --- 7. INSTAGRAM SHARE SHEET ---
+        // --- 7. FLAREOFFICIAL SHARE SHEET ---
         activeShareReel?.let { reel ->
-            InstagramReelShareSheet(
+            FlareOfficialReelShareSheet(
                 reel = reel,
                 onDismiss = { activeShareReel = null },
                 onShareExternal = {
-                    val entity = remoteReels.find { it.id.toInt() == reel.id }
+                    val entity = remoteReels.find { it.id == reel.id }
                     if (entity != null) {
                         viewModel.shareReel(context, entity)
                     }
@@ -596,17 +749,96 @@ fun ReelsScreen(
                 }
             )
         }
+
+        // --- 9. EDIT REEL BOTTOM SHEET ---
+        reelToEdit?.let { reel ->
+            EditReelBottomSheet(
+                reel = reel,
+                onDismiss = { reelToEdit = null },
+                onUpdate = { newCaption, newMusic ->
+                    val entity = remoteReels.find { it.id == reel.id }
+                    if (entity != null) {
+                        viewModel.updateReel(entity, newCaption, newMusic) { success, msg ->
+                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                reelToEdit = null
+                                // Update local list state if needed (re-sync from Room normally handles this)
+                                viewModel.refreshReelsFromSupabase()
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditReelBottomSheet(
+    reel: FlareOfficialReelData,
+    onDismiss: () -> Unit,
+    onUpdate: (String, String) -> Unit
+) {
+    var caption by remember { mutableStateOf(reel.caption) }
+    var music by remember { mutableStateOf(reel.music) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Edit Reel ✏️",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            OutlinedTextField(
+                value = caption,
+                onValueChange = { caption = it },
+                label = { Text("Caption") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            OutlinedTextField(
+                value = music,
+                onValueChange = { music = it },
+                label = { Text("Music/Audio Description") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Button(
+                onClick = { onUpdate(caption, music) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Save Changes", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 }
 
 /**
  * -------------------------------------------------------------
- * INDIVIDUAL INSTAGRAM REEL PAGE
+ * INDIVIDUAL FLAREOFFICIAL REEL PAGE
  * -------------------------------------------------------------
  */
 @Composable
-fun InstagramReelPageItem(
-    reel: InstagramReelData,
+fun FlareOfficialReelPageItem(
+    reel: FlareOfficialReelData,
     isCurrentPage: Boolean,
     isMuted: Boolean,
     onToggleMute: () -> Unit,
@@ -615,6 +847,8 @@ fun InstagramReelPageItem(
     onCommentClicked: () -> Unit,
     onShareClicked: () -> Unit,
     onSaveClicked: () -> Unit,
+    onPlaybackStateChange: (Boolean) -> Unit = {},
+    onMediaError: () -> Unit = {},
     onFollowClicked: () -> Unit,
     onOpenProfile: () -> Unit,
     onEditClicked: () -> Unit,
@@ -624,21 +858,15 @@ fun InstagramReelPageItem(
     var showPlayPauseIcon by remember { mutableStateOf(false) }
     var showDoubleTapHeart by remember { mutableStateOf(false) }
     var isCaptionExpanded by remember { mutableStateOf(false) }
-    var isMenuExpanded by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
+    
+    // ... rest of the function ...
 
-    // Smooth subtle video zoom simulation
+    // Smooth subtle video zoom simulation — removed (video no longer zooms while watching)
+    val videoScale = 1f
+
     val infiniteTransition = rememberInfiniteTransition(label = "reel_video_zoom")
-    val videoScale by infiniteTransition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = if (isCurrentPage && isPlaying) 1.05f else 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 8000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "reel_zoom_anim"
-    )
 
     // Continuous Vinyl Disc Rotation
     val rotationAngle by infiniteTransition.animateFloat(
@@ -676,40 +904,21 @@ fun InstagramReelPageItem(
             }
             .testTag("ig_reel_page_${reel.id}")
     ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 52.dp, end = 10.dp)
-        ) {
-            IconButton(onClick = { isMenuExpanded = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Reel options", tint = Color.White)
-            }
-            DropdownMenu(
-                expanded = isMenuExpanded,
-                onDismissRequest = { isMenuExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Edit Reel") },
-                    onClick = { isMenuExpanded = false; onEditClicked() }
-                )
-                DropdownMenuItem(
-                    text = { Text("Delete Reel", color = MaterialTheme.colorScheme.error) },
-                    onClick = { isMenuExpanded = false; onDeleteClicked() }
-                )
-            }
-        }
-
         // --- HARDWARE ACCELERATED EXOPLAYER WITH CLOUD CACHING ---
         com.example.media.player.ReelsVideoPlayerView(
             videoUrl = reel.videoUrl,
+            storagePath = reel.storagePath,
             thumbnailRes = reel.imageRes,
+            thumbnailPath = reel.thumbnailPath,
             isCurrentPage = isCurrentPage,
             isPlaying = isPlaying,
             isMuted = isMuted,
+            onPlaybackStateChange = onPlaybackStateChange,
+            onError = onMediaError,
             modifier = Modifier.fillMaxSize()
         )
 
-        // --- INSTAGRAM SHADOW GRADIENTS ---
+        // --- FLAREOFFICIAL SHADOW GRADIENTS ---
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -737,7 +946,7 @@ fun InstagramReelPageItem(
             Icon(
                 imageVector = Icons.Filled.Favorite,
                 contentDescription = null,
-                tint = InstagramPink,
+                tint = FlareOfficialPink,
                 modifier = Modifier.size(110.dp)
             )
         }
@@ -765,7 +974,7 @@ fun InstagramReelPageItem(
             }
         }
 
-        // --- RIGHT-SIDE INSTAGRAM ACTION STACK ---
+        // --- RIGHT-SIDE FLAREOFFICIAL ACTION STACK ---
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -783,7 +992,7 @@ fun InstagramReelPageItem(
                     Icon(
                         imageVector = if (reel.isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = "Like",
-                        tint = if (reel.isLiked) InstagramPink else Color.White,
+                        tint = if (reel.isLiked) FlareOfficialPink else Color.White,
                         modifier = Modifier.size(30.dp)
                     )
                 }
@@ -816,15 +1025,15 @@ fun InstagramReelPageItem(
                 )
             }
 
-            // 3. SHARE / SEND PAPER PLANE
+            // 3. REPOST PAPER PLANE
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(
                     onClick = onShareClicked,
                     modifier = Modifier.size(42.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Share",
+                        imageVector = Icons.Default.Repeat,
+                        contentDescription = "Repost",
                         tint = Color.White,
                         modifier = Modifier.size(26.dp)
                     )
@@ -868,7 +1077,7 @@ fun InstagramReelPageItem(
                         .padding(2.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    VynAvatar(avatarType = reel.avatarType, storagePath = reel.userAvatarPath, size = 30.dp)
+                    FlareAvatar(avatarType = reel.avatarType, storagePath = reel.userAvatarPath, size = 30.dp)
                 }
             }
         }
@@ -892,13 +1101,13 @@ fun InstagramReelPageItem(
                         .clip(CircleShape)
                         .border(
                             1.5.dp,
-                            Brush.linearGradient(listOf(InstagramDeepPurple, InstagramPink, InstagramYellow)),
+                            Brush.linearGradient(listOf(FlareOfficialDeepPurple, FlareOfficialPink, FlareOfficialYellow)),
                             CircleShape
                         )
                         .padding(2.dp)
                         .clickable { onOpenProfile() }
                 ) {
-                    VynAvatar(avatarType = reel.avatarType, storagePath = reel.userAvatarPath, size = 34.dp)
+                    FlareAvatar(avatarType = reel.avatarType, storagePath = reel.userAvatarPath, size = 34.dp)
                 }
 
                 Text(
@@ -912,7 +1121,7 @@ fun InstagramReelPageItem(
                 Icon(
                     imageVector = Icons.Default.Verified,
                     contentDescription = "Verified",
-                    tint = InstagramBlue,
+                    tint = FlareOfficialBlue,
                     modifier = Modifier.size(14.dp)
                 )
 
@@ -1001,16 +1210,16 @@ fun InstagramReelPageItem(
 
 /**
  * -------------------------------------------------------------
- * INSTAGRAM REEL COMMENTS BOTTOM SHEET
+ * FLAREOFFICIAL REEL COMMENTS BOTTOM SHEET
  * -------------------------------------------------------------
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InstagramReelCommentsSheet(
-    reel: InstagramReelData,
+fun FlareOfficialReelCommentsSheet(
+    reel: FlareOfficialReelData,
     myProfile: com.example.data.model.UserProfileEntity,
     onDismiss: () -> Unit,
-    onAddComment: (String) -> Unit
+    onAddComment: (String, String) -> Unit
 ) {
     var commentText by remember { mutableStateOf("") }
     val quickEmojis = listOf("❤️", "🔥", "👏", "😂", "😍", "🙌", "💯", "✨")
@@ -1058,7 +1267,7 @@ fun InstagramReelCommentsSheet(
                             modifier = Modifier.weight(1f),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            VynAvatar(avatarType = comment.avatarType, storagePath = comment.userAvatarPath, size = 36.dp)
+                            FlareAvatar(avatarType = comment.avatarType, storagePath = comment.userAvatarPath, size = 36.dp)
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(
@@ -1080,7 +1289,7 @@ fun InstagramReelCommentsSheet(
                                     Text(
                                         text = relTime,
                                         fontSize = 11.sp,
-                                        color = VynTextSecondary
+                                        color = FlareTextSecondary
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -1094,7 +1303,7 @@ fun InstagramReelCommentsSheet(
                                     text = "Reply",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = VynTextSecondary,
+                                    color = FlareTextSecondary,
                                     modifier = Modifier.clickable {
                                         commentText = "@${comment.handle} "
                                     }
@@ -1113,14 +1322,14 @@ fun InstagramReelCommentsSheet(
                             Icon(
                                 imageVector = if (comment.isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                                 contentDescription = null,
-                                tint = if (comment.isLiked) InstagramPink else VynTextSecondary,
+                                tint = if (comment.isLiked) FlareOfficialPink else FlareTextSecondary,
                                 modifier = Modifier.size(16.dp)
                             )
                             if (comment.likes > 0) {
                                 Text(
                                     text = "${comment.likes}",
                                     fontSize = 10.sp,
-                                    color = VynTextSecondary
+                                    color = FlareTextSecondary
                                 )
                             }
                         }
@@ -1157,7 +1366,7 @@ fun InstagramReelCommentsSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                VynAvatar(
+                FlareAvatar(
                     avatarType = myProfile.avatarType,
                     storagePath = myProfile.avatarPath,
                     size = 36.dp
@@ -1189,7 +1398,7 @@ fun InstagramReelCommentsSheet(
                                     Text(
                                         text = "Add a comment for @${reel.handle}...",
                                         fontSize = 13.sp,
-                                        color = VynTextSecondary
+                                        color = FlareTextSecondary
                                     )
                                 }
                                 innerTextField()
@@ -1201,10 +1410,10 @@ fun InstagramReelCommentsSheet(
                                 text = "Post",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = InstagramBlue,
+                                color = FlareOfficialBlue,
                                 modifier = Modifier
                                     .clickable {
-                                        onAddComment(commentText)
+                                        onAddComment(commentText, reel.handle)
                                         commentText = ""
                                     }
                                     .padding(start = 8.dp)
@@ -1219,13 +1428,13 @@ fun InstagramReelCommentsSheet(
 
 /**
  * -------------------------------------------------------------
- * INSTAGRAM REEL SHARE SHEET
+ * FLAREOFFICIAL REEL SHARE SHEET
  * -------------------------------------------------------------
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InstagramReelShareSheet(
-    reel: InstagramReelData,
+fun FlareOfficialReelShareSheet(
+    reel: FlareOfficialReelData,
     onDismiss: () -> Unit,
     onShareExternal: () -> Unit = {},
     onSendDirect: (String) -> Unit
@@ -1252,7 +1461,7 @@ fun InstagramReelShareSheet(
             )
 
             // Direct Friends Horizontal Row
-            Text("Send in Direct Message:", fontSize = 13.sp, color = VynTextSecondary)
+            Text("Send in Direct Message:", fontSize = 13.sp, color = FlareTextSecondary)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -1264,7 +1473,7 @@ fun InstagramReelShareSheet(
                             .clickable { onSendDirect(name) }
                             .width(68.dp)
                     ) {
-                        VynAvatar(avatarType = avatar, size = 52.dp)
+                        FlareAvatar(avatarType = avatar, size = 52.dp)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = name.split(" ").first(),
@@ -1277,7 +1486,7 @@ fun InstagramReelShareSheet(
                             text = "Send",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = InstagramBlue
+                            color = FlareOfficialBlue
                         )
                     }
                 }
@@ -1401,7 +1610,7 @@ fun CreateReelBottomSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Upload Instagram Reel 🎥",
+                    text = "Upload FlareOfficial Reel 🎥",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -1426,7 +1635,7 @@ fun CreateReelBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Select Video / Cover:", fontSize = 13.sp, color = VynTextSecondary)
+                Text("Select Video / Cover:", fontSize = 13.sp, color = FlareTextSecondary)
                 OutlinedButton(
                     onClick = { videoOrImageLauncher.launch("*/*") },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
@@ -1450,7 +1659,7 @@ fun CreateReelBottomSheet(
                             .weight(1f)
                             .clickable { selectedImage = customUriString!! }
                     ) {
-                        VynImage(
+                        FlareImage(
                             imageResName = customUriString!!,
                             modifier = Modifier
                                 .height(80.dp)
@@ -1458,7 +1667,7 @@ fun CreateReelBottomSheet(
                                 .clip(RoundedCornerShape(8.dp))
                                 .then(
                                     if (selectedImage == customUriString) {
-                                        Modifier.background(InstagramBlue).padding(2.dp)
+                                        Modifier.background(FlareOfficialBlue).padding(2.dp)
                                     } else Modifier
                                 )
                         )
@@ -1468,7 +1677,7 @@ fun CreateReelBottomSheet(
             }
 
             // Soundtrack / Audio Selection
-            Text("Select Audio Soundtrack:", fontSize = 13.sp, color = VynTextSecondary)
+            Text("Select Audio Soundtrack:", fontSize = 13.sp, color = FlareTextSecondary)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 soundOptions.forEach { sound ->
                     Surface(
@@ -1486,7 +1695,7 @@ fun CreateReelBottomSheet(
                             Icon(
                                 imageVector = if (selectedMusic == sound) Icons.Filled.RadioButtonChecked else Icons.Filled.RadioButtonUnchecked,
                                 contentDescription = null,
-                                tint = if (selectedMusic == sound) MaterialTheme.colorScheme.primary else VynTextSecondary,
+                                tint = if (selectedMusic == sound) MaterialTheme.colorScheme.primary else FlareTextSecondary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
@@ -1502,7 +1711,7 @@ fun CreateReelBottomSheet(
             OutlinedTextField(
                 value = caption,
                 onValueChange = { caption = it },
-                placeholder = { Text("Write a caption and hashtags (#reels #vyn9 #viral)...") },
+                placeholder = { Text("Write a caption and hashtags (#reels #flareofficial #viral)...") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(90.dp)
@@ -1512,7 +1721,7 @@ fun CreateReelBottomSheet(
 
             Button(
                 onClick = {
-                    val finalCaption = caption.ifBlank { "Check out my new Reel! 🚀 #vyn9 #reels" }
+                    val finalCaption = caption.ifBlank { "Check out my new Reel! 🚀 #flareofficial #reels" }
                     onPublish(finalCaption, selectedMusic, selectedImage)
                 },
                 modifier = Modifier
